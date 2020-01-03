@@ -39,8 +39,6 @@ class ExportSMF(Operator, ExportHelper):
             )
 
     def execute(self, context):
-        obj = context.object
-        
         with open(self.filepath, "wb") as file:
             # Write header text
             file.write("SnidrsModelFormat".encode('utf-8'))
@@ -60,10 +58,36 @@ class ExportSMF(Operator, ExportHelper):
             placeholder_bytes = (0, 0)
             file.write(pack('II', *placeholder_bytes))
             
-            center, size = obj.location[:], 1
+            center, size = (0, 0, 0), 1
             file.write(pack('ffff', *(*center, size)))
             
             # Write actual data
+            
+            # Write models
+            # TODO Filter on object type 'MESH'
+            for obj in context.selected_objects:
+                data = obj.data
+                size = len(data.polygons) * 3 * 44
+                
+                file.write(pack('I', size))
+                # TODO Write vertex buffer contents here
+                for face in data.polygons:
+                    for loop in [data.loops[i] for i in face.loop_indices]:
+                        vert = data.vertices[loop.vertex_index]
+                        file.write(pack('fff', *(vert.co[:])))
+                        file.write(pack('fff', *(vert.normal[:])))
+                        file.write(pack('fff', *(loop.tangent[:])))
+                        file.write(pack('f', 0))
+                        file.write(pack('ffff', *(0, 0, 0, 0)))
+                        file.write(pack('ffff', *(0, 0, 0, 0)))
+                
+                mat_name = obj.material_slots[0].name
+                file.write(mat_name.encode('utf-8'))
+                file.write(bytes(1))    # Null byte (end of matname)
+                
+                file.write(bytes(1))    # Null byte (end of texname)
+                
+                # TODO Skinning info (dummy data)
         
         return {'FINISHED'}
 
