@@ -1,5 +1,5 @@
 import bpy
-
+from struct import pack
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -39,6 +39,31 @@ class ExportSMF(Operator, ExportHelper):
             )
 
     def execute(self, context):
+        obj = context.object
+        
+        with open(self.filepath, "wb") as file:
+            # Write header text
+            file.write("SnidrsModelFormat".encode('utf-8'))
+            file.write(bytes(1))    # Null byte
+            
+            # Write version
+            version = 7
+            file.write(pack('f', version))
+            
+            # Write rest of header
+            offsets = (0, 0, 0, 0, 0, 0, 0, 0)
+            file.write(pack('IIIIIIII', *offsets))
+            
+            no_models = len(context.selected_objects)
+            file.write(pack('B', no_models))
+            
+            placeholder_bytes = (0, 0)
+            file.write(pack('II', *placeholder_bytes))
+            
+            center, size = obj.location[:], 1
+            file.write(pack('ffff', *(*center, size)))
+            
+            # Write actual data
         
         return {'FINISHED'}
 
@@ -54,7 +79,7 @@ def register():
 
 
 def unregister():
-    bpy.utils.unregister_class(ExportSomeData)
+    bpy.utils.unregister_class(ExportSMF)
     bpy.types.INFO_MT_file_export.remove(menu_func_export)
 
 
