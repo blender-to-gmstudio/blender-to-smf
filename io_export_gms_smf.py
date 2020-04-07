@@ -116,13 +116,13 @@ class ExportSMF(Operator, ExportHelper):
             file.write(pack('L',0))                                 # colBuffSize
             
             # Write (the absence of a) rig
-            file.write(pack('U',0))                                 # boneNum
+            file.write(pack('B',0))                                 # boneNum
             
             # Write (the absence of) animation
             file.write(pack('B',0))                                 # animationNum
             
             # Write (the absence of) saved selections
-            file.write(pack('B'),0))                                # selNum
+            file.write(pack('B',0))                                 # selNum
         
         return {'FINISHED'}
 
