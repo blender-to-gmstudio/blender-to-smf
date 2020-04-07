@@ -1,5 +1,6 @@
 import bpy
 from struct import pack
+from math import floor
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -41,8 +42,7 @@ class ExportSMF(Operator, ExportHelper):
     def execute(self, context):
         with open(self.filepath, "wb") as file:
             # Write header text
-            file.write("SnidrsModelFormat".encode('utf-8'))
-            file.write(bytes(1))    # Null byte
+            file.write(bytearray("SnidrsModelFormat\0",'utf-8'))
             
             # Write version
             version = 7
@@ -61,11 +61,27 @@ class ExportSMF(Operator, ExportHelper):
             center, size = (0, 0, 0), 1
             file.write(pack('ffff', *(*center, size)))
             
-            # Write actual data
+            # Write textures/images (same thing as seen from SMF)
+            file.write(pack('B', len(bpy.data.images)))                 # Number of textures
+            for tex in bpy.data.images:
+                channels = tex.channels
+                item_number = len(tex.pixels)
+                pixel_number = int(len(tex.pixels)/channels)
+                
+                file.write(bytearray(tex.name + "\0",'utf-8'))          # Texture name
+                file.write(pack('HH',*tex.size[:]))                     # Texture size (w,h)
+                
+                bytedata = [floor(component*255) for component in tex.pixels[:]]
+                file.write(pack('B'*item_number,*bytedata))
+            
+            # Write materials
+            file.write(pack('B', len(bpy.data.materials)))
+            for mat in bpy.data.materials:
+                file.write(bytearray(mat.name + "\0", 'utf-8'))         # Material name
+                file.write(pack('B',0))                                 # Material type
             
             # Write models
-            # TODO Filter on object type 'MESH'
-            for obj in context.selected_objects:
+            for obj in [o for o in context.selected_objects if o.type=='MESH']:
                 data = obj.data
                 size = len(data.polygons) * 3 * 44
                 
@@ -78,16 +94,35 @@ class ExportSMF(Operator, ExportHelper):
                         file.write(pack('fff', *(vert.normal[:])))
                         file.write(pack('fff', *(loop.tangent[:])))
                         file.write(pack('f', 0))
-                        file.write(pack('ffff', *(0, 0, 0, 0)))
-                        file.write(pack('ffff', *(0, 0, 0, 0)))
+                        file.write(pack('ffff', *(0, 0, 0, 0)))     # Bone indices (TODO)
+                        file.write(pack('ffff', *(0, 0, 0, 0)))     # Bone weights (TODO)
                 
                 mat_name = obj.material_slots[0].name
-                file.write(mat_name.encode('utf-8'))
-                file.write(bytes(1))    # Null byte (end of matname)
+                file.write(bytearray(mat_name + '\0','utf-8'))      # Mat name
                 
                 file.write(bytes(1))    # Null byte (end of texname)
                 
                 # TODO Skinning info (dummy data)
+            
+            # Write (the absence of) nodes
+            file.write(pack('B',0))                                 # nodeTypeNum
+            file.write(pack('B',0))                                 # nodeNum
+            
+            # Write ambient color
+            ambient = [floor(component*255) for component in context.scene.world.ambient_color[:]]
+            file.write(pack('BBB',*ambient))
+            
+            # Write (the absence of a) collision buffer
+            file.write(pack('L',0))                                 # colBuffSize
+            
+            # Write (the absence of a) rig
+            file.write(pack('U',0))                                 # boneNum
+            
+            # Write (the absence of) animation
+            file.write(pack('B',0))                                 # animationNum
+            
+            # Write (the absence of) saved selections
+            file.write(pack('B'),0))                                # selNum
         
         return {'FINISHED'}
 
