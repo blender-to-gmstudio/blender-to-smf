@@ -24,21 +24,23 @@ class ExportSMF(Operator, ExportHelper):
             )
 
     def execute(self, context):
-        # Write textures/images (same thing as seen from SMF)
+        # Write textures and their image data (same thing as seen from SMF)
         texture_bytes = bytearray()
-        texture_bytes.extend(pack('B', len(bpy.data.images)))       # Number of textures
-        for tex in bpy.data.images:
-            channels = tex.channels
-            item_number = len(tex.pixels)
-            pixel_number = int(len(tex.pixels)/channels)
+        texture_bytes.extend(pack('B', len(bpy.data.textures)))     # Number of textures
+        for tex in bpy.data.textures:
+            img = tex.image
+            channels = img.channels
+            item_number = len(img.pixels)
+            pixel_number = int(item_number/channels)
             
             texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))# Texture name
-            texture_bytes.extend(pack('HH',*tex.size[:]))           # Texture size (w,h)
+            texture_bytes.extend(pack('HH',*img.size[:]))           # Texture size (w,h)
             
-            bytedata = [floor(component*255) for component in tex.pixels[:]]
+            bytedata = [floor(component*255) for component in img.pixels[:]]
             texture_bytes.extend(pack('B'*item_number,*bytedata))
         
         # Write materials
+        # TODO Support more complex materials
         material_bytes = bytearray()
         material_bytes.extend(pack('B', len(bpy.data.materials)))
         for mat in bpy.data.materials:
@@ -49,16 +51,18 @@ class ExportSMF(Operator, ExportHelper):
         model_bytes = bytearray()
         for obj in [o for o in context.selected_objects if o.type=='MESH']:
             data = obj.data
-            size = len(data.polygons) * 3 * 44
+            size = len(data.polygons) * 3 * 44                        # 44 = size in bytes of vertex format
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
+            uv_data = data.uv_layers.active.data
             for face in data.polygons:
                 for loop in [data.loops[i] for i in face.loop_indices]:
                     vert = data.vertices[loop.vertex_index]
                     model_bytes.extend(pack('fff', *(vert.co[:])))
                     model_bytes.extend(pack('fff', *(vert.normal[:])))
-                    model_bytes.extend(pack('ff', *(0, 0)))           # uv
+                    uv = uv_data[loop.index].uv
+                    model_bytes.extend(pack('ff', *uv))               # uv
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
                     model_bytes.extend(pack('BBBB', *(0, 0, 0, 0)))   # Bone indices (TODO)
@@ -67,7 +71,7 @@ class ExportSMF(Operator, ExportHelper):
             # Mat and tex name
             mat_name = obj.material_slots[0].name
             model_bytes.extend(bytearray(mat_name + '\0','utf-8'))    # Mat name
-            tex_name = obj.material_slots[0].material.texture_slots[0].texture.image.name
+            tex_name = obj.material_slots[0].material.texture_slots[0].texture.name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
             
             # Visible
@@ -108,16 +112,15 @@ class ExportSMF(Operator, ExportHelper):
         
         header_size = 79
         
-        offsets = (
-            header_size,
-            header_size + len(texture_bytes),
-            header_size + len(texture_bytes) + len(material_bytes),
-            header_size + len(texture_bytes) + len(material_bytes) + len(model_bytes),
-            header_size + len(texture_bytes) + len(material_bytes) + len(model_bytes) + len(node_bytes),
-            header_size + len(texture_bytes) + len(material_bytes) + len(model_bytes) + len(node_bytes) + len(collision_buffer_bytes),
-            header_size + len(texture_bytes) + len(material_bytes) + len(model_bytes) + len(node_bytes) + len(collision_buffer_bytes) + len(rig_bytes),
-            header_size + len(texture_bytes) + len(material_bytes) + len(model_bytes) + len(node_bytes) + len(collision_buffer_bytes) + len(rig_bytes) + len(animation_bytes)
-        )
+        tex_pos = header_size
+        mat_pos = tex_pos + len(texture_bytes)
+        mod_pos = mat_pos + len(material_bytes)
+        nod_pos = mod_pos + len(model_bytes)
+        col_pos = nod_pos + len(node_bytes)
+        rig_pos = col_pos + len(collision_buffer_bytes)
+        ani_pos = rig_pos + len(rig_bytes)
+        sel_pos = ani_pos + len(animation_bytes)
+        offsets = (tex_pos,mat_pos,mod_pos,nod_pos,col_pos,rig_pos,ani_pos,sel_pos)
         header_bytes.extend(pack('IIIIIIII', *offsets))               # texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos
         
         placeholder_bytes = (0, 0)
