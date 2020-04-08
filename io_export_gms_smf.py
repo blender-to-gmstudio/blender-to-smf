@@ -59,10 +59,10 @@ class ExportSMF(Operator, ExportHelper):
                     model_bytes.extend(pack('fff', *(vert.co[:])))
                     model_bytes.extend(pack('fff', *(vert.normal[:])))
                     model_bytes.extend(pack('ff', *(0, 0)))           # uv
-                    model_bytes.extend(pack('fff', *(loop.tangent[:])))
-                    model_bytes.extend(pack('f', 0))
-                    model_bytes.extend(pack('ffff', *(0, 0, 0, 0)))   # Bone indices (TODO)
-                    model_bytes.extend(pack('ffff', *(0, 0, 0, 0)))   # Bone weights (TODO)
+                    tan_int = [int(c*255) for c in loop.tangent]
+                    model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
+                    model_bytes.extend(pack('BBBB', *(0, 0, 0, 0)))   # Bone indices (TODO)
+                    model_bytes.extend(pack('BBBB', *(0, 0, 0, 0)))   # Bone weights (TODO)
             
             # Mat and tex name
             mat_name = obj.material_slots[0].name
