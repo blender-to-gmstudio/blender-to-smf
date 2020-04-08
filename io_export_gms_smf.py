@@ -50,7 +50,7 @@ class ExportSMF(Operator, ExportHelper):
             
             # Write rest of header
             offsets = (0, 0, 0, 0, 0, 0, 0, 0)
-            file.write(pack('IIIIIIII', *offsets))
+            file.write(pack('IIIIIIII', *offsets))                      # texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos
             
             no_models = len(context.selected_objects)
             file.write(pack('B', no_models))
