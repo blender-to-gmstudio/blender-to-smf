@@ -1,6 +1,7 @@
 import bpy
 from struct import pack
 from math import floor
+from mathutils import Quaternion
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -44,14 +45,24 @@ class ExportSMF(Operator, ExportHelper):
         material_bytes = bytearray()
         material_bytes.extend(pack('B', len(bpy.data.materials)))
         for mat in bpy.data.materials:
-            material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))# Material name
-            material_bytes.extend(pack('B',0))                        # Material type
-        
+            # Basic info
+            mat_type = 0
+            material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))    # Material name
+            material_bytes.extend(pack('B',mat_type))                     # Material type
+            
+            if (mat_type > 0):
+                # Effect modifiers (assume SMF_mat.Type == 1 for now)
+                material_bytes.extend(pack('B',mat.specular_intensity))   # SpecReflectance
+                material_bytes.extend(pack('B',mat.specular_hardness))    # SpecDamping
+                material_bytes.extend(pack('B',0))                        # RimPower
+                material_bytes.extend(pack('B',0))                        # RimFactor
+            
         # Write models
         model_bytes = bytearray()
-        for obj in [o for o in context.selected_objects if o.type=='MESH']:
+        model_list = [o for o in context.selected_objects if o.type=='MESH']
+        for obj in model_list:
             data = obj.data
-            size = len(data.polygons) * 3 * 44                        # 44 = size in bytes of vertex format
+            size = len(data.polygons) * 3 * 44                            # 44 = size in bytes of vertex format
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
@@ -81,7 +92,12 @@ class ExportSMF(Operator, ExportHelper):
             model_bytes.extend(pack('L',0))                           # n
         
         # Write (the absence of) nodes and ambient color
+        node_types = {'MESH','CAMERA','LAMP','EMPTY','SPEAKER','CURVE'}
+        
         node_bytes = bytearray()
+        #node_bytes.extend(pack('B',len(node_types)))                  # nodeTypeNum
+        #node_bytes.extend(pack('B',len(context.selected_objects)))    # nodeNum
+        
         node_bytes.extend(pack('B',0))                                # nodeTypeNum
         node_bytes.extend(pack('B',0))                                # nodeNum
         
@@ -92,9 +108,24 @@ class ExportSMF(Operator, ExportHelper):
         collision_buffer_bytes = bytearray()
         collision_buffer_bytes.extend(pack('L',0))                    # colBuffSize
         
-        # Write (the absence of a) rig
+        # Write rig
+        rig = bpy.data.armatures[0]                                   # Happily assume there's a rig at index 0...
+        
         rig_bytes = bytearray()
-        rig_bytes.extend(pack('B',0))                                 # boneNum
+        rig_bytes.extend(pack('B',len(rig.bones)))                    # boneNum
+        for bone in rig.bones:
+            dual_quaternion = (0,0,0,0,0,0,0,0)
+            # Qr = r; Qd = .5 * (0, t) * r
+            head = bone.head
+            Qr = bone.matrix.to_quaternion()
+            Qd = .5 * Quaternion([0, *bone.head[:]]) * Qr
+            rig_bytes.extend(pack('ffffffff',*[*Qr[:],*Qd[:]]))       # Something like this perhaps??
+            if bone.parent == None:
+                parent_bone_index = 0                                 # Is this assumption correct??
+            else:
+                parent_bone_index = rig.bones.find(bone.parent.name) + 1
+            rig_bytes.extend(pack('B',parent_bone_index))
+            rig_bytes.extend(pack('B',bone.use_connect))              # Attached to parent bone?
         
         # Write (the absence of) animation
         animation_bytes = bytearray()
@@ -126,7 +157,7 @@ class ExportSMF(Operator, ExportHelper):
         placeholder_bytes = (0, 0)
         header_bytes.extend(pack('II', *placeholder_bytes))
         
-        no_models = len(context.selected_objects)
+        no_models = len(model_list)
         header_bytes.extend(pack('B', no_models))
         
         center, size = (0, 0, 0), 1
