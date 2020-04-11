@@ -32,8 +32,7 @@ class ExportSMF(Operator, ExportHelper):
         texture_bytes.extend(pack('B', len(bpy.data.textures)))     # Number of textures
         for tex in bpy.data.textures:
             img = tex.image
-            channels = img.channels
-            item_number = len(img.pixels)
+            channels, item_number = img.channels, len(img.pixels)
             pixel_number = int(item_number/channels)
             
             texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))# Texture name
@@ -59,7 +58,7 @@ class ExportSMF(Operator, ExportHelper):
                 material_bytes.extend(pack('B',0))                        # RimFactor
             
         # Write models
-        # TODO: triangulate meshes! (don't forget to do this!)
+        # TODO triangulate meshes! (don't forget to do this!)
         model_bytes = bytearray()
         model_list = [o for o in context.selected_objects if o.type=='MESH']
         for obj in model_list:
@@ -112,6 +111,7 @@ class ExportSMF(Operator, ExportHelper):
         collision_buffer_bytes.extend(pack('L',0))                    # colBuffSize
         
         # Write rig
+        # TODO Is this the pose mode we're writing here??
         rig = bpy.data.armatures[0]                                   # Happily assume there's a rig at index 0...
         
         rig_bytes = bytearray()
@@ -130,9 +130,13 @@ class ExportSMF(Operator, ExportHelper):
             rig_bytes.extend(pack('B',parent_bone_index))
             rig_bytes.extend(pack('B',bone.use_connect))              # Attached to parent bone?
         
-        # Write (the absence of) animation
+        # Write animations (a first quick attempt)
         animation_bytes = bytearray()
-        animation_bytes.extend(pack('B',0))                           # animationNum
+        animation_bytes.extend(pack('B',len(bpy.data.actions))        # animationNum
+        for action in bpy.data.actions:
+            animation_bytes.extend(bytearray(action.name+"\0",'utf-8')# animation name
+            #for frame in action.frame_range:
+            #    pass
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
