@@ -26,6 +26,8 @@ class ExportSMF(Operator, ExportHelper):
 
     def execute(self, context):
         # Write textures and their image data (same thing as seen from SMF)
+        # TODO Only export textures that are in use by the model
+        #      (instead of everything in bpy.data)
         texture_bytes = bytearray()
         texture_bytes.extend(pack('B', len(bpy.data.textures)))     # Number of textures
         for tex in bpy.data.textures:
@@ -41,7 +43,7 @@ class ExportSMF(Operator, ExportHelper):
             texture_bytes.extend(pack('B'*item_number,*bytedata))
         
         # Write materials
-        # TODO Support more complex materials
+        # TODO Support more complex materials (types != 0)
         material_bytes = bytearray()
         material_bytes.extend(pack('B', len(bpy.data.materials)))
         for mat in bpy.data.materials:
@@ -51,13 +53,13 @@ class ExportSMF(Operator, ExportHelper):
             material_bytes.extend(pack('B',mat_type))                     # Material type
             
             if (mat_type > 0):
-                # Effect modifiers (assume SMF_mat.Type == 1 for now)
                 material_bytes.extend(pack('B',mat.specular_intensity))   # SpecReflectance
                 material_bytes.extend(pack('B',mat.specular_hardness))    # SpecDamping
                 material_bytes.extend(pack('B',0))                        # RimPower
                 material_bytes.extend(pack('B',0))                        # RimFactor
             
         # Write models
+        # TODO: triangulate meshes! (don't forget to do this!)
         model_bytes = bytearray()
         model_list = [o for o in context.selected_objects if o.type=='MESH']
         for obj in model_list:
@@ -90,6 +92,7 @@ class ExportSMF(Operator, ExportHelper):
             
             # Skinning info (dummy data)
             model_bytes.extend(pack('L',0))                           # n
+            model_bytes.extend(pack('L',0))                           # n (#2)
         
         # Write (the absence of) nodes and ambient color
         node_types = {'MESH','CAMERA','LAMP','EMPTY','SPEAKER','CURVE'}
