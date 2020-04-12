@@ -48,13 +48,25 @@ class ExportSMF(Operator, ExportHelper):
         
         bm.to_mesh(mesh)
         bm.free()
-        
+    
+    @staticmethod
+    def dual_quaternion(rotation_matrix,vector):
+        """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
+        Qr = rotation_matrix.to_quaternion()
+        Qd = .5 * Quaternion([0, *vector[:]]) * Qr
+        return (*Qr[:], *Qd[:])
 
     def execute(self, context):
         # Constants initialization, etc.
         SMF_version = 7
         SMF_format_size = 44
         SMF_header_size = 79
+        
+        object_list = context.selected_objects
+        model_list = [o for o in object_list if o.type=='MESH']
+        armature_list = [o for o in object_list if o.type=='ARMATURE']
+        if (len(armature_list) > 1):
+            report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
         
         # Write textures and their image data (same thing as seen from SMF)
         # TODO Only export textures that are in use by the model(s)
@@ -108,7 +120,6 @@ class ExportSMF(Operator, ExportHelper):
             
         # Write models
         model_bytes = bytearray()
-        model_list = [o for o in context.selected_objects if o.type=='MESH']
         for obj in model_list:
             mesh = obj.data.copy()
             ExportSMF.triangulate_mesh(mesh)
@@ -167,24 +178,29 @@ class ExportSMF(Operator, ExportHelper):
         collision_buffer_bytes.extend(pack('L',0))                    # colBuffSize
         
         # Write rig
-        # TODO Is this the pose mode we're writing here??
-        rig = bpy.data.armatures[0]                                   # Happily assume there's a rig at index 0...
-        
         rig_bytes = bytearray()
-        rig_bytes.extend(pack('B',len(rig.bones)))                    # boneNum
-        for bone in rig.bones:
-            dual_quaternion = (0,0,0,0,0,0,0,0)
-            # Qr = r; Qd = .5 * (0, t) * r
-            head = bone.head
-            Qr = bone.matrix.to_quaternion()
-            Qd = .5 * Quaternion([0, *bone.head[:]]) * Qr
-            rig_bytes.extend(pack('ffffffff',*[*Qr[:],*Qd[:]]))       # Something like this perhaps??
-            if bone.parent == None:
-                parent_bone_index = 0                                 # Is this assumption correct??
-            else:
-                parent_bone_index = rig.bones.find(bone.parent.name) + 1
-            rig_bytes.extend(pack('B',parent_bone_index))
-            rig_bytes.extend(pack('B',bone.use_connect))              # Attached to parent bone?
+        
+        if len(armature_list) > 0:
+            rig = armature_list[0].data                               # First armature in selection
+            rig_bytes.extend(pack('B',len(rig.bones)+1))              # boneNum
+            
+            if len(rig.bones) > 0:
+                # Write root node
+                bone = rig.bones[0]
+                dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.head_local)
+                rig_bytes.extend(pack('ffffffff',*dq))
+                rig_bytes.extend(pack('B',0))
+                rig_bytes.extend(pack('B',0))
+                
+                # Write all other (child) nodes
+                for bone in rig.bones:
+                    dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                    rig_bytes.extend(pack('ffffffff',*dq))
+                    parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                    rig_bytes.extend(pack('B',parent_bone_index))
+                    rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
+        else:
+            rig_bytes.extend(pack('B',0))                             # No rig => no bones
         
         # Write animations (a first quick attempt)
         animation_bytes = bytearray()
