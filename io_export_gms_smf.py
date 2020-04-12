@@ -14,6 +14,7 @@ class ExportSMF(Operator, ExportHelper):
     """This appears in the tooltip of the operator and in the generated docs"""
     bl_idname = "export_scene.smf"
     bl_label = "Export SMF"
+    bl_options = {'REGISTER','PRESET'}
 
     # ExportHelper mixin class uses this
     filename_ext = ".smf"
@@ -60,16 +61,34 @@ class ExportSMF(Operator, ExportHelper):
         material_bytes = bytearray()
         material_bytes.extend(pack('B', len(bpy.data.materials)))
         for mat in bpy.data.materials:
-            # Basic info
-            mat_type = 0
+            # Determine SMF material type
+            if mat.use_shadeless:
+                mat_type = 0
+            else:
+                mat_type = 2                                              # Per-fragment shading
+            
+            # Basic info for all material types
             material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))    # Material name
             material_bytes.extend(pack('B',mat_type))                     # Material type
             
-            if (mat_type > 0):
-                material_bytes.extend(pack('B',mat.specular_intensity))   # SpecReflectance
+            if mat_type > 0:
+                # Effect modifiers
+                spec_int = int(mat.specular_intensity*127)
+                material_bytes.extend(pack('B',spec_int))                 # SpecReflectance
                 material_bytes.extend(pack('B',mat.specular_hardness))    # SpecDamping
+                material_bytes.extend(pack('B',1))                        # CelSteps
                 material_bytes.extend(pack('B',0))                        # RimPower
                 material_bytes.extend(pack('B',0))                        # RimFactor
+                
+                # Normal map
+                material_bytes.extend(pack('B',0))                        # Not enabled right now
+                
+                # Outlines
+                material_bytes.extend(pack('B',0))                        # Not enabled right now
+                
+                # Reflection
+                material_bytes.extend(pack('B',0))                        # Not enabled right now
+                
             
         # Write models
         # TODO triangulate meshes! (don't forget to do this!)
