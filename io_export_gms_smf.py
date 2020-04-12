@@ -1,3 +1,14 @@
+bl_info = {
+    "name": "Export SMF",
+    "description": "Export to SMF (SnidrsModelFormat)",
+    "author": "Bart Teunis",
+    "version": (0, 2, 0),
+    "blender": (2, 79, 0),
+    "location": "File > Export",
+    "warning": "", # used for warning icon and text in addons panel
+    "wiki_url": "",
+    "category": "Import-Export"}
+
 import bpy
 from struct import pack
 from math import floor
@@ -11,9 +22,9 @@ from bpy.types import Operator
 
 
 class ExportSMF(Operator, ExportHelper):
-    """This appears in the tooltip of the operator and in the generated docs"""
+    """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
     bl_idname = "export_scene.smf"
-    bl_label = "Export SMF"
+    bl_label = "SMF (*.smf)"
     bl_options = {'REGISTER','PRESET'}
 
     # ExportHelper mixin class uses this
@@ -40,6 +51,10 @@ class ExportSMF(Operator, ExportHelper):
         
 
     def execute(self, context):
+        # Constants initialization, etc.
+        SMF_version = 7
+        SMF_format_size = 44
+        
         # Write textures and their image data (same thing as seen from SMF)
         # TODO Only export textures that are in use by the model
         #      (instead of everything in bpy.data)
@@ -91,14 +106,13 @@ class ExportSMF(Operator, ExportHelper):
                 
             
         # Write models
-        # TODO triangulate meshes! (don't forget to do this!)
         model_bytes = bytearray()
         model_list = [o for o in context.selected_objects if o.type=='MESH']
         for obj in model_list:
             mesh = obj.data.copy()
             ExportSMF.triangulate_mesh(mesh)
             
-            size = len(mesh.polygons) * 3 * 44                            # 44 = size in bytes of vertex format
+            size = len(mesh.polygons) * 3 * SMF_format_size
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
@@ -107,7 +121,7 @@ class ExportSMF(Operator, ExportHelper):
                 for loop in [mesh.loops[i] for i in face.loop_indices]:
                     vert = mesh.vertices[loop.vertex_index]
                     model_bytes.extend(pack('fff', *(vert.co[:])))
-                    model_bytes.extend(pack('fff', *(vert.normal[:])))
+                    model_bytes.extend(pack('fff', *(face.normal[:])))# TODO correct normals (vertex, loop, polygon)!
                     uv = uv_data[loop.index].uv
                     model_bytes.extend(pack('ff', *uv))               # uv
                     tan_int = [int(c*255) for c in loop.tangent]
@@ -185,9 +199,8 @@ class ExportSMF(Operator, ExportHelper):
         
         
         # Now build header
-        version = 7
         header_bytes = bytearray("SnidrsModelFormat\0",'utf-8')
-        header_bytes.extend(pack('f', version))
+        header_bytes.extend(pack('f', SMF_version))
         
         header_size = 79
         
