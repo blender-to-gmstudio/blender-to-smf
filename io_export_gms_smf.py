@@ -23,6 +23,20 @@ class ExportSMF(Operator, ExportHelper):
             options={'HIDDEN'},
             maxlen=255,  # Max internal buffer length, longer would be clamped.
             )
+    
+    @staticmethod
+    def triangulate_mesh(mesh):
+        """Triangulate the given mesh using the BMesh library"""
+        import bmesh
+        
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method=0, ngon_method=0)
+        
+        bm.to_mesh(mesh)
+        bm.free()
+        
 
     def execute(self, context):
         # Write textures and their image data (same thing as seen from SMF)
@@ -62,15 +76,17 @@ class ExportSMF(Operator, ExportHelper):
         model_bytes = bytearray()
         model_list = [o for o in context.selected_objects if o.type=='MESH']
         for obj in model_list:
-            data = obj.data
-            size = len(data.polygons) * 3 * 44                            # 44 = size in bytes of vertex format
+            mesh = obj.data.copy()
+            ExportSMF.triangulate_mesh(mesh)
+            
+            size = len(mesh.polygons) * 3 * 44                            # 44 = size in bytes of vertex format
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
-            uv_data = data.uv_layers.active.data
-            for face in data.polygons:
-                for loop in [data.loops[i] for i in face.loop_indices]:
-                    vert = data.vertices[loop.vertex_index]
+            uv_data = mesh.uv_layers.active.data
+            for face in mesh.polygons:
+                for loop in [mesh.loops[i] for i in face.loop_indices]:
+                    vert = mesh.vertices[loop.vertex_index]
                     model_bytes.extend(pack('fff', *(vert.co[:])))
                     model_bytes.extend(pack('fff', *(vert.normal[:])))
                     uv = uv_data[loop.index].uv
@@ -92,6 +108,9 @@ class ExportSMF(Operator, ExportHelper):
             # Skinning info (dummy data)
             model_bytes.extend(pack('L',0))                           # n
             model_bytes.extend(pack('L',0))                           # n (#2)
+            
+            # Delete triangulated copy of the mesh
+            bpy.data.meshes.remove(mesh)
         
         # Write (the absence of) nodes and ambient color
         node_types = {'MESH','CAMERA','LAMP','EMPTY','SPEAKER','CURVE'}
@@ -132,11 +151,14 @@ class ExportSMF(Operator, ExportHelper):
         
         # Write animations (a first quick attempt)
         animation_bytes = bytearray()
-        animation_bytes.extend(pack('B',len(bpy.data.actions))        # animationNum
-        for action in bpy.data.actions:
-            animation_bytes.extend(bytearray(action.name+"\0",'utf-8')# animation name
-            #for frame in action.frame_range:
-            #    pass
+        animation_bytes.extend(pack('B',0))                           # animationNum
+        
+        #animation_bytes = bytearray()
+        #animation_bytes.extend(pack('B',len(bpy.data.actions))        # animationNum
+        #for action in bpy.data.actions:
+        #    animation_bytes.extend(bytearray(action.name+"\0",'utf-8')# animation name
+        #    #for frame in action.frame_range:
+        #    #    pass
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
