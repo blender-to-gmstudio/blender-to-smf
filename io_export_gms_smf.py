@@ -54,9 +54,10 @@ class ExportSMF(Operator, ExportHelper):
         # Constants initialization, etc.
         SMF_version = 7
         SMF_format_size = 44
+        SMF_header_size = 79
         
         # Write textures and their image data (same thing as seen from SMF)
-        # TODO Only export textures that are in use by the model
+        # TODO Only export textures that are in use by the model(s)
         #      (instead of everything in bpy.data)
         texture_bytes = bytearray()
         texture_bytes.extend(pack('B', len(bpy.data.textures)))     # Number of textures
@@ -146,13 +147,16 @@ class ExportSMF(Operator, ExportHelper):
             bpy.data.meshes.remove(mesh)
         
         # Write (the absence of) nodes and ambient color
-        node_types = {'MESH','CAMERA','LAMP','EMPTY','SPEAKER','CURVE'}
+        #node_types = {'MESH','CAMERA','LAMP','EMPTY','SPEAKER','CURVE'}
+        node_types = {}
         
         node_bytes = bytearray()
-        #node_bytes.extend(pack('B',len(node_types)))                  # nodeTypeNum
-        #node_bytes.extend(pack('B',len(context.selected_objects)))    # nodeNum
+        node_bytes.extend(pack('B',len(node_types)))                  # nodeTypeNum
+        for node_type in node_types:
+            node_bytes.extend(bytearray(node_type,'utf-8'))           # node name
+            node_bytes.extend(pack('B',0))                            # empty string
+            node_bytes.extend(pack('f',1))                            # node scale
         
-        node_bytes.extend(pack('B',0))                                # nodeTypeNum
         node_bytes.extend(pack('B',0))                                # nodeNum
         
         ambient = [floor(component*255) for component in context.scene.world.ambient_color[:]]
@@ -202,9 +206,7 @@ class ExportSMF(Operator, ExportHelper):
         header_bytes = bytearray("SnidrsModelFormat\0",'utf-8')
         header_bytes.extend(pack('f', SMF_version))
         
-        header_size = 79
-        
-        tex_pos = header_size
+        tex_pos = SMF_header_size
         mat_pos = tex_pos + len(texture_bytes)
         mod_pos = mat_pos + len(material_bytes)
         nod_pos = mod_pos + len(model_bytes)
