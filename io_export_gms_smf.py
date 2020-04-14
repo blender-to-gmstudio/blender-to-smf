@@ -52,8 +52,13 @@ class ExportSMF(Operator, ExportHelper):
     @staticmethod
     def dual_quaternion(rotation_matrix,vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
+        vector = [vector[0],-vector[1],vector[2]]
         Qr = rotation_matrix.to_quaternion()
         Qd = .5 * Quaternion([0, *vector[:]]) * Qr
+        Qr.x = -Qr.x
+        Qr.z = -Qr.z
+        Qd.x = -Qd.x
+        Qd.z = -Qd.z
         return (*Qr[:], *Qd[:])
 
     def execute(self, context):
@@ -79,7 +84,7 @@ class ExportSMF(Operator, ExportHelper):
             pixel_number = int(item_number/channels)
             
             texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))# Texture name
-            texture_bytes.extend(pack('HH',*img.size[:]))           # Texture size (w,h)
+            texture_bytes.extend(pack('HH',*img.size))              # Texture size (w,h)
             
             bytedata = [floor(component*255) for component in img.pixels[:]]
             texture_bytes.extend(pack('B'*item_number,*bytedata))
@@ -119,12 +124,16 @@ class ExportSMF(Operator, ExportHelper):
                 
             
         # Write models
+        # TODO Apply modifiers, location, rotation and scale, etc.
+        # TODO Flip normals, now that we flip y coordinate
+        # TODO Invert y
         model_bytes = bytearray()
         for obj in model_list:
             mesh = obj.data.copy()
             ExportSMF.triangulate_mesh(mesh)
             
-            size = len(mesh.polygons) * 3 * SMF_format_size
+            number_of_verts = 3 * len(mesh.polygons)
+            size = number_of_verts * SMF_format_size
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
@@ -132,14 +141,22 @@ class ExportSMF(Operator, ExportHelper):
             for face in mesh.polygons:
                 for loop in [mesh.loops[i] for i in face.loop_indices]:
                     vert = mesh.vertices[loop.vertex_index]
-                    model_bytes.extend(pack('fff', *(vert.co[:])))
-                    model_bytes.extend(pack('fff', *(face.normal[:])))# TODO correct normals (vertex, loop, polygon)!
+                    co = [vert.co.x,-vert.co.y,vert.co.z]
+                    model_bytes.extend(pack('fff', *(co[:])))
+                    normal_source = vert                              # One of vert, loop, face
+                    normal = [normal_source.normal.x,-normal_source.normal.y,normal_source.normal.z]
+                    model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
                     uv = uv_data[loop.index].uv
-                    model_bytes.extend(pack('ff', *uv))               # uv
+                    model_bytes.extend(pack('ff', *[uv[0],-uv[1]]))   # uv
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
-                    model_bytes.extend(pack('BBBB', *(0, 0, 0, 0)))   # Bone indices (TODO)
-                    model_bytes.extend(pack('BBBB', *(0, 0, 0, 0)))   # Bone weights (TODO)
+                    indices = [0,0,0,0]
+                    weights = [0,0,0,0]
+                    for index,group in enumerate(vert.groups[0:4]):   # 4 bone weights max!
+                        indices[index] = group.group
+                        weights[index] = int(group.weight*255)
+                    model_bytes.extend(pack('BBBB', *indices))        # Bone indices
+                    model_bytes.extend(pack('BBBB', *weights))        # Bone weights
             
             # Mat and tex name
             mat_name = obj.material_slots[0].name
@@ -196,9 +213,18 @@ class ExportSMF(Operator, ExportHelper):
                 for bone in rig.bones:
                     dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
                     rig_bytes.extend(pack('ffffffff',*dq))
-                    parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                    #parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                    parent_bone_index = rig.bones.find(bone.name)
+                    print("Node!")
+                    print(bone)
+                    print(bone.matrix_local)
+                    print(bone.tail_local)
+                    print(parent_bone_index)
+                    print(bone.use_connect)
+                    print("End of Node!")
                     rig_bytes.extend(pack('B',parent_bone_index))
-                    rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
+                    #rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
+                    rig_bytes.extend(pack('B',1))                     # Determines SMF parent bone behaviour
         else:
             rig_bytes.extend(pack('B',0))                             # No rig => no bones
         
