@@ -11,12 +11,13 @@ bl_info = {
 
 import bpy
 from struct import pack
-from math import floor
-from mathutils import Quaternion
+from mathutils import *
+from math import *
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
 from bpy_extras.io_utils import ExportHelper
+
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
@@ -52,8 +53,9 @@ class ExportSMF(Operator, ExportHelper):
     @staticmethod
     def dual_quaternion(rotation_matrix,vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
-        vector = [vector[0],-vector[1],vector[2]]
-        Qr = rotation_matrix.to_quaternion()
+        vector = [vector[0],vector[1],vector[2]]        # Offset
+        #Qr = rotation_matrix.to_quaternion()            # Rotation axis & angle as quaternion
+        Qr = Matrix().to_quaternion()            # Rotation axis & angle as quaternion
         Qd = .5 * Quaternion([0, *vector[:]]) * Qr
         Qr.x = -Qr.x
         Qr.z = -Qr.z
@@ -202,29 +204,27 @@ class ExportSMF(Operator, ExportHelper):
             rig_bytes.extend(pack('B',len(rig.bones)+1))              # boneNum
             
             if len(rig.bones) > 0:
-                # Write root node
-                bone = rig.bones[0]
-                dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.head_local)
-                rig_bytes.extend(pack('ffffffff',*dq))
-                rig_bytes.extend(pack('B',0))
-                rig_bytes.extend(pack('B',0))
-                
-                # Write all other (child) nodes
+                # Write all nodes, except the last one
                 for bone in rig.bones:
-                    dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                    dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.head_local)
+                    parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                    
                     rig_bytes.extend(pack('ffffffff',*dq))
-                    #parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
-                    parent_bone_index = rig.bones.find(bone.name)
-                    print("Node!")
-                    print(bone)
-                    print(bone.matrix_local)
-                    print(bone.tail_local)
+                    rig_bytes.extend(pack('B',parent_bone_index))
+                    rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
+                                                                      # (root/detached from parent or not)
                     print(parent_bone_index)
                     print(bone.use_connect)
-                    print("End of Node!")
-                    rig_bytes.extend(pack('B',parent_bone_index))
-                    #rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
-                    rig_bytes.extend(pack('B',1))                     # Determines SMF parent bone behaviour
+                
+                # Write tail of last bone as final node
+                ind = len(rig.bones)-1
+                bone = rig.bones[ind]
+                dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                rig_bytes.extend(pack('ffffffff',*dq))
+                parent_bone_index = rig.bones.find(bone.name)         # We count nodes, not bones (!)
+                #parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                rig_bytes.extend(pack('B',parent_bone_index))
+                rig_bytes.extend(pack('B',bone.use_connect))
         else:
             rig_bytes.extend(pack('B',0))                             # No rig => no bones
         
