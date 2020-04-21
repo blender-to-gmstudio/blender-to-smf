@@ -54,13 +54,17 @@ class ExportSMF(Operator, ExportHelper):
     def dual_quaternion(rotation_matrix,vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
         vector = [vector[0],vector[1],vector[2]]        # Offset
-        #Qr = rotation_matrix.to_quaternion()            # Rotation axis & angle as quaternion
-        Qr = Matrix().to_quaternion()            # Rotation axis & angle as quaternion
+        Qr = rotation_matrix.to_quaternion()            # Rotation axis & angle as quaternion
+        #Qr = Matrix().to_quaternion()            # Rotation axis & angle as quaternion
         Qd = .5 * Quaternion([0, *vector[:]]) * Qr
+        tempQry = Qr.y
         Qr.x = -Qr.x
-        Qr.z = -Qr.z
+        Qr.y = Qr.z
+        Qr.z = -tempQry
+        tempQdy = Qd.y
         Qd.x = -Qd.x
-        Qd.z = -Qd.z
+        Qd.y = Qd.z
+        Qd.z = -tempQdy
         return (*Qr[:], *Qd[:])
 
     def execute(self, context):
@@ -206,8 +210,11 @@ class ExportSMF(Operator, ExportHelper):
             if len(rig.bones) > 0:
                 # Write all nodes, except the last one
                 for bone in rig.bones:
-                    dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.head_local)
                     parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
+                    if bone.parent == None:
+                        dq = ExportSMF.dual_quaternion(Matrix(),bone.head_local)
+                    else:
+                        dq = ExportSMF.dual_quaternion(bone.parent.matrix_local,bone.head_local)
                     
                     rig_bytes.extend(pack('ffffffff',*dq))
                     rig_bytes.extend(pack('B',parent_bone_index))
