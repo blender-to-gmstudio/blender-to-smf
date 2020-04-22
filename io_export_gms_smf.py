@@ -53,9 +53,7 @@ class ExportSMF(Operator, ExportHelper):
     @staticmethod
     def dual_quaternion(rotation_matrix,vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
-        vector = [vector[0],vector[1],vector[2]]        # Offset
         Qr = rotation_matrix.to_quaternion()            # Rotation axis & angle as quaternion
-        #Qr = Matrix().to_quaternion()            # Rotation axis & angle as quaternion
         Qd = .5 * Quaternion([0, *vector[:]]) * Qr
         tempQry = Qr.y
         Qr.x = -Qr.x
