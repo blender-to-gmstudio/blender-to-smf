@@ -203,33 +203,34 @@ class ExportSMF(Operator, ExportHelper):
         
         if len(armature_list) > 0:
             rig = armature_list[0].data                               # First armature in selection
-            rig_bytes.extend(pack('B',len(rig.bones)+1))              # boneNum
             
             if len(rig.bones) > 0:
-                # Write all nodes, except the last one
+                rig_bytes.extend(pack('B',len(rig.bones)+1))          # boneNum
+                
+                # Export a single, connected bone hierarchy
                 for bone in rig.bones:
                     parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
-                    if bone.parent == None:
-                        dq = ExportSMF.dual_quaternion(Matrix(),bone.head_local)
-                    else:
-                        dq = ExportSMF.dual_quaternion(bone.parent.matrix_local,bone.head_local)
                     
-                    rig_bytes.extend(pack('ffffffff',*dq))
-                    rig_bytes.extend(pack('B',parent_bone_index))
-                    rig_bytes.extend(pack('B',bone.use_connect))      # Determines SMF parent bone behaviour
+                    if bone.parent == None:
+                        # Write the head as a separate node
+                        dq = ExportSMF.dual_quaternion(Matrix(),bone.head_local)
+                        rig_bytes.extend(pack('ffffffff',*dq))
+                        rig_bytes.extend(pack('B',0))
+                        rig_bytes.extend(pack('B',0))
+                        
+                        # Write the tail
+                        dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                        rig_bytes.extend(pack('ffffffff',*dq))
+                        rig_bytes.extend(pack('B',0))
+                        rig_bytes.extend(pack('B',1))                 # Determines SMF parent bone behaviour
                                                                       # (root/detached from parent or not)
-                    print(parent_bone_index)
-                    print(bone.use_connect)
-                
-                # Write tail of last bone as final node
-                ind = len(rig.bones)-1
-                bone = rig.bones[ind]
-                dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
-                rig_bytes.extend(pack('ffffffff',*dq))
-                parent_bone_index = rig.bones.find(bone.name)         # We count nodes, not bones (!)
-                #parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
-                rig_bytes.extend(pack('B',parent_bone_index))
-                rig_bytes.extend(pack('B',bone.use_connect))
+                    else:
+                        # Write the tail
+                        dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                        rig_bytes.extend(pack('ffffffff',*dq))
+                        rig_bytes.extend(pack('B',parent_bone_index+1))# +1 since root node is at index 0
+                        rig_bytes.extend(pack('B',1))                 # Determines SMF parent bone behaviour
+                                                                      # (root/detached from parent or not)
         else:
             rig_bytes.extend(pack('B',0))                             # No rig => no bones
         
