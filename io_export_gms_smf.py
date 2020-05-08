@@ -65,7 +65,7 @@ class ExportSMF(Operator, ExportHelper):
     def dual_quaternion(rotation_matrix,vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
         Qr = rotation_matrix.to_quaternion()                        # Rotation axis & angle as quaternion
-        Qd = .5 * Quaternion([0, *vector[:]]) * Qr
+        Qd = .5 * Quaternion([0, *[-vector.x,vector.y,vector.z]]) * Qr
         return (-Qr.x,-Qr.y,Qr.z,Qr.w,-Qd.x,-Qd.y,Qd.z,Qd.w)        # Invert z, invert rotations
 
     def execute(self, context):
