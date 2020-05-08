@@ -45,6 +45,17 @@ class ExportSMF(Operator, ExportHelper):
         bm = bmesh.new()
         bm.from_mesh(mesh)
         
+        geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
+        # See https://blender.stackexchange.com/a/122321
+        bmesh.ops.mirror(bm,
+            geom=geom_orig,
+            axis=1,
+            matrix=Matrix(),
+            merge_dist=-1
+        )
+        bmesh.ops.delete(bm,geom=geom_orig,context=5)
+        bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+        
         bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method=0, ngon_method=0)
         
         bm.to_mesh(mesh)
@@ -55,7 +66,6 @@ class ExportSMF(Operator, ExportHelper):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
         Qr = rotation_matrix.to_quaternion()                        # Rotation axis & angle as quaternion
         Qd = .5 * Quaternion([0, *vector[:]]) * Qr
-        
         return (-Qr.x,-Qr.y,Qr.z,Qr.w,-Qd.x,-Qd.y,Qd.z,Qd.w)        # Invert z, invert rotations
 
     def execute(self, context):
@@ -138,13 +148,12 @@ class ExportSMF(Operator, ExportHelper):
             for face in mesh.polygons:
                 for loop in [mesh.loops[i] for i in face.loop_indices]:
                     vert = mesh.vertices[loop.vertex_index]
-                    co = [vert.co.x,-vert.co.y,vert.co.z]
-                    model_bytes.extend(pack('fff', *(co[:])))
+                    model_bytes.extend(pack('fff', *(vert.co[:])))
                     normal_source = vert                              # One of vert, loop, face
-                    normal = [normal_source.normal.x,-normal_source.normal.y,normal_source.normal.z]
+                    normal = [normal_source.normal.x,normal_source.normal.y,normal_source.normal.z]
                     model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
                     uv = uv_data[loop.index].uv
-                    model_bytes.extend(pack('ff', *[uv[0],-uv[1]]))   # uv
+                    model_bytes.extend(pack('ff', *(uv[:])))          # uv
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
                     indices = [0,0,0,0]
