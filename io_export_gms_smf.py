@@ -77,8 +77,18 @@ class ExportSMF(Operator, ExportHelper):
         object_list = context.selected_objects
         model_list = [o for o in object_list if o.type=='MESH']
         armature_list = [o for o in object_list if o.type=='ARMATURE']
-        if (len(armature_list) > 1):
-            report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
+        if len(armature_list) > 1:
+            self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
+        
+        # Check if we can export the selected armature
+        # (supported are one on more connected hierarchies each with a single root bone in a single armature)
+        unsupported_rig = False
+        if len(armature_list) > 0:
+            rig = armature_list[0].data
+            unsupported_rig = len([bone for bone in rig.bones if bone.parent != None and bone.use_connect == False]) > 0
+            
+            if unsupported_rig:
+                self.report({'WARNING'},"The currently selected rig contains disconnected bones, which are not supported by SMF. Export of armature will be skipped.")
         
         # Write textures and their image data (same thing as seen from SMF)
         # TODO Only export textures that are in use by the model(s)
@@ -132,8 +142,6 @@ class ExportSMF(Operator, ExportHelper):
             
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
-        # TODO Flip normals, now that we flip y coordinate
-        # TODO Invert y
         model_bytes = bytearray()
         for obj in model_list:
             mesh = obj.data.copy()
@@ -156,8 +164,7 @@ class ExportSMF(Operator, ExportHelper):
                     model_bytes.extend(pack('ff', *(uv[:])))          # uv
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
-                    indices = [0,0,0,0]
-                    weights = [0,0,0,0]
+                    indices, weights = [0,0,0,0], [0,0,0,0]
                     for index,group in enumerate(vert.groups[0:4]):   # 4 bone weights max!
                         indices[index] = group.group
                         weights[index] = int(group.weight*255)
@@ -204,43 +211,46 @@ class ExportSMF(Operator, ExportHelper):
         rig_bytes = bytearray()
         
         if len(armature_list) > 0:
-            rig = armature_list[0].data                               # First armature in selection
-            
-            if len(rig.bones) > 0:
-                root_bones = [bone for bone in rig.bones if bone.parent == None]
-                rig_bytes.extend(pack('B',len(rig.bones)+len(root_bones)))# nodeNum
+            if unsupported_rig:
+                rig_bytes.extend(pack('B',0))
+            else:
+                rig = armature_list[0].data                               # First armature in selection
                 
-                node_list = []
-                
-                # Export all connected bone hierarchies
-                for root_bone in root_bones:
-                    # Write root bone
-                    # Head
-                    dq = ExportSMF.dual_quaternion(Matrix(),root_bone.head_local)
-                    rig_bytes.extend(pack('ffffffff',*dq))
-                    rig_bytes.extend(pack('B',0))
-                    rig_bytes.extend(pack('B',0))
+                if len(rig.bones) > 0:
+                    root_bones = [bone for bone in rig.bones if bone.parent == None]
+                    rig_bytes.extend(pack('B',len(rig.bones)+len(root_bones)))# nodeNum
                     
-                    node_list.append("")                              # Write a value that we'll never use
+                    node_list = []
                     
-                    # Tail
-                    dq = ExportSMF.dual_quaternion(root_bone.matrix_local,root_bone.tail_local)
-                    rig_bytes.extend(pack('ffffffff',*dq))
-                    rig_bytes.extend(pack('B',len(node_list)-1))
-                    rig_bytes.extend(pack('B',1))                     # Determines SMF parent bone behaviour
-                                                                      # (root/detached from parent or not)
-                    node_list.append(root_bone.name)
-                    
-                    # Write all children
-                    for bone in root_bone.children_recursive:
-                        parent_bone_index = node_list.index(bone.parent.name)
-                        
-                        dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                    # Export all connected bone hierarchies
+                    for root_bone in root_bones:
+                        # Write root bone
+                        # Head
+                        dq = ExportSMF.dual_quaternion(Matrix(),root_bone.head_local)
                         rig_bytes.extend(pack('ffffffff',*dq))
-                        rig_bytes.extend(pack('B',parent_bone_index))
-                        rig_bytes.extend(pack('B',1))                 # Determines SMF parent bone behaviour
-                                                                      # (root/detached from parent or not)
-                        node_list.append(bone.name)
+                        rig_bytes.extend(pack('B',0))
+                        rig_bytes.extend(pack('B',0))
+                        
+                        node_list.append("")                              # Write a value that we'll never use
+                        
+                        # Tail
+                        dq = ExportSMF.dual_quaternion(root_bone.matrix_local,root_bone.tail_local)
+                        rig_bytes.extend(pack('ffffffff',*dq))
+                        rig_bytes.extend(pack('B',len(node_list)-1))
+                        rig_bytes.extend(pack('B',1))                     # Determines SMF parent bone behaviour
+                                                                          # (root/detached from parent or not)
+                        node_list.append(root_bone.name)
+                        
+                        # Write all children
+                        for bone in root_bone.children_recursive:
+                            parent_bone_index = node_list.index(bone.parent.name)
+                            
+                            dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
+                            rig_bytes.extend(pack('ffffffff',*dq))
+                            rig_bytes.extend(pack('B',parent_bone_index))
+                            rig_bytes.extend(pack('B',1))                 # Determines SMF parent bone behaviour
+                                                                          # (root/detached from parent or not)
+                            node_list.append(bone.name)
         else:
             rig_bytes.extend(pack('B',0))                             # No rig => no bones
         
