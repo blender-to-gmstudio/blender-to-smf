@@ -91,11 +91,12 @@ class ExportSMF(Operator, ExportHelper):
                 self.report({'WARNING'},"The currently selected rig contains disconnected bones, which are not supported by SMF. Export of armature will be skipped.")
         
         # Write textures and their image data (same thing as seen from SMF)
-        # TODO Only export textures that are in use by the model(s)
-        #      (instead of everything in bpy.data)
+        unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
+        unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
+        
         texture_bytes = bytearray()
-        texture_bytes.extend(pack('B', len(bpy.data.textures)))     # Number of textures
-        for tex in bpy.data.textures:
+        texture_bytes.extend(pack('B', len(unique_textures)))       # Number of textures
+        for tex in unique_textures:
             img = tex.image
             channels, item_number = img.channels, len(img.pixels)
             pixel_number = int(item_number/channels)
@@ -107,10 +108,9 @@ class ExportSMF(Operator, ExportHelper):
             texture_bytes.extend(pack('B'*item_number,*bytedata))
         
         # Write materials
-        # TODO Support more complex materials (types != 0)
         material_bytes = bytearray()
         material_bytes.extend(pack('B', len(bpy.data.materials)))
-        for mat in bpy.data.materials:
+        for mat in unique_materials:
             # Determine SMF material type
             if mat.use_shadeless:
                 mat_type = 0
@@ -172,9 +172,18 @@ class ExportSMF(Operator, ExportHelper):
                     model_bytes.extend(pack('BBBB', *weights))        # Bone weights
             
             # Mat and tex name
-            mat_name = obj.material_slots[0].name
+            mat_name = ""
+            tex_name = ""
+            if len(obj.material_slots) > 0:
+                ms = obj.material_slots[0]
+                if ms.material != None:
+                    mat = ms.material
+                    mat_name = mat.name
+                    if mat.texture_slots[0] != None:
+                        tex = mat.texture_slots[0].texture
+                        tex_name = tex.name
+            
             model_bytes.extend(bytearray(mat_name + '\0','utf-8'))    # Mat name
-            tex_name = obj.material_slots[0].material.texture_slots[0].texture.name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
             
             # Visible
@@ -256,18 +265,22 @@ class ExportSMF(Operator, ExportHelper):
         
         # Write animations
         animation_bytes = bytearray()
-        if armature_list[0].animation_data.action == None:
-            # Armature object doesn't have a valid action
-            animation_bytes.extend(pack('B',0))                           # animNum
+        
+        if len(armature_list) > 0:
+            if armature_list[0].animation_data.action == None:
+                # Armature object doesn't have a valid action
+                animation_bytes.extend(pack('B',0))                           # animNum
+            else:
+                animation_bytes.extend(pack('B',1))                           # animNum (one action)
+                
+                action = armature_list[0].animation_data.action
+                
+                animation_bytes.extend(bytearray(action.name+"\0",'utf-8'))   # animName
+                animation_bytes.extend(pack('B',0))                           # keyframeNum
+                #for frame in action.frame_range:
+                #    pass
         else:
-            animation_bytes.extend(pack('B',1))                           # animNum (one action)
-            
-            action = armature_list[0].animation_data.action
-            
-            animation_bytes.extend(bytearray(action.name+"\0",'utf-8'))   # animName
-            animation_bytes.extend(pack('B',0))                           # keyframeNum
-            #for frame in action.frame_range:
-            #    pass
+            animation_bytes.extend(pack('B',0))                               # animNum
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
