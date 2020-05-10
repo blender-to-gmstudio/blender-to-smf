@@ -252,22 +252,26 @@ class ExportSMF(Operator, ExportHelper):
                                                                           # (root/detached from parent or not)
                             node_list.append(bone.name)
         else:
-            rig_bytes.extend(pack('B',0))                             # No rig => no bones
+            rig_bytes.extend(pack('B',0))                                 # No rig => no bones
         
-        # Write animations (a first quick attempt)
+        # Write animations
         animation_bytes = bytearray()
-        animation_bytes.extend(pack('B',0))                           # animationNum
-        
-        #animation_bytes = bytearray()
-        #animation_bytes.extend(pack('B',len(bpy.data.actions))        # animationNum
-        #for action in bpy.data.actions:
-        #    animation_bytes.extend(bytearray(action.name+"\0",'utf-8')# animation name
-        #    #for frame in action.frame_range:
-        #    #    pass
+        if armature_list[0].animation_data.action == None:
+            # Armature object doesn't have a valid action
+            animation_bytes.extend(pack('B',0))                           # animNum
+        else:
+            animation_bytes.extend(pack('B',1))                           # animNum (one action)
+            
+            action = armature_list[0].animation_data.action
+            
+            animation_bytes.extend(bytearray(action.name+"\0",'utf-8'))   # animName
+            animation_bytes.extend(pack('B',0))                           # keyframeNum
+            #for frame in action.frame_range:
+            #    pass
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
-        saved_selections_bytes.extend(pack('B',0))                    # selNum
+        saved_selections_bytes.extend(pack('B',0))                        # selNum
         
         
         # Now build header
