@@ -274,12 +274,22 @@ class ExportSMF(Operator, ExportHelper):
             # No valid animation
             animation_bytes.extend(pack('B',0))                           # animNum
         else:
+            # Single animation in armature object's action
             animation_bytes.extend(pack('B',1))                           # animNum (one action)
-            
             animation_bytes.extend(bytearray(anim.name+"\0",'utf-8'))     # animName
-            animation_bytes.extend(pack('B',0))                           # keyframeNum
-            #for frame in action.frame_range:
-            #    pass
+            
+            # Get the times where the animation has keyframes set
+            keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
+            
+            animation_bytes.extend(pack('B',len(keyframe_times)))         # keyframeNum
+            for frame in keyframe_times:
+                # PRE Armature must be in pose position
+                context.scene.frame_set(frame)
+                
+                animation_bytes.extend(pack('f',frame))
+                
+                for bone in rig_object.pose.bones:
+                    animation_bytes.extend(pack('ffffffff',*[0,0,0,1,0,0,0,0]))
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
