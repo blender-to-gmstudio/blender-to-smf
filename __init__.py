@@ -3,7 +3,7 @@ bl_info = {
     "description": "Export to SMF (SnidrsModelFormat)",
     "author": "Bart Teunis",
     "version": (0, 2, 0),
-    "blender": (2, 79, 0),
+    "blender": (2, 82, 0),
     "location": "File > Export",
     "warning": "", # used for warning icon and text in addons panel
     "wiki_url": "",
@@ -16,10 +16,17 @@ from math import *
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper
+from bpy_extras.io_utils import ExportHelper, axis_conversion
 
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
+
+if "bpy" in locals():
+    if "dual_quaternions" in locals():
+        import importlib
+        importlib.reload(dual_quaternions)
+
+from . import dual_quaternions
 
 
 class ExportSMF(Operator, ExportHelper):
@@ -31,14 +38,14 @@ class ExportSMF(Operator, ExportHelper):
     # ExportHelper mixin class uses this
     filename_ext = ".smf"
 
-    filter_glob = StringProperty(
+    filter_glob : StringProperty(
             default="*.smf",
             options={'HIDDEN'},
             maxlen=255,  # Max internal buffer length, longer would be clamped.
             )
     
     @staticmethod
-    def triangulate_mesh(mesh):
+    def prepare_mesh(mesh):
         """Triangulate the given mesh using the BMesh library"""
         import bmesh
         
@@ -49,31 +56,46 @@ class ExportSMF(Operator, ExportHelper):
         # See https://blender.stackexchange.com/a/122321
         bmesh.ops.mirror(bm,
             geom=geom_orig,
-            axis=1,
+            axis='Y',
             matrix=Matrix(),
             merge_dist=-1
         )
-        bmesh.ops.delete(bm,geom=geom_orig,context=5)
+        bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
         bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
         
-        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method=0, ngon_method=0)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
         
         bm.to_mesh(mesh)
         bm.free()
     
     @staticmethod
-    def dual_quaternion(rotation_matrix,vector):
+    def dq_from_matrix_vector(rotation_matrix, vector):
         """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
         Qr = rotation_matrix.to_quaternion()                        # Rotation axis & angle as quaternion
-        Qd = .5 * Quaternion([0, *[-vector.x,vector.y,vector.z]]) * Qr
-        return (-Qr.x,-Qr.y,Qr.z,Qr.w,-Qd.x,-Qd.y,Qd.z,Qd.w)        # Invert z, invert rotations
-
+        Qd = .5 * Quaternion([0, *vector]) @ Qr
+        return (Qr.x,Qr.y,Qr.z,Qr.w,Qd.x,Qd.y,Qd.z,Qd.w)            # SMF stores w last
+    
+    @staticmethod
+    def dq_from_axis_vector(axis, vector):
+        """Use the orientation of the bone combined with the location vector"""
+        Qr = Quaternion(axis, radians(0.0))
+        Qd = .5  * Quaternion([0, *vector]) @ Qr
+        print(axis)
+        print(vector)
+        return (Qr.x,Qr.y,Qr.z,Qr.w,Qd.x,Qd.y,Qd.z,Qd.w)            # SMF stores w last
+    
+    def dq_from_quat_vector(quat, vector):
+        """Use a rotation quaternion combined with a location vector"""
+        Qr = quat
+        Qd = .5 * Quaternion([0, *vector]) @ Qr
+        return (Qr.x,Qr.y,Qr.z,Qr.w,Qd.x,Qd.y,Qd.z,Qd.w)            # SMF stores w last
+    
     def execute(self, context):
         # Constants initialization, etc.
         SMF_version = 7
         SMF_format_size = 44
         SMF_header_size = 79
-        
+         
         # Figure out what we're going to export
         object_list = context.selected_objects
         model_list = [o for o in object_list if o.type=='MESH']
@@ -148,13 +170,15 @@ class ExportSMF(Operator, ExportHelper):
                 # Reflection
                 material_bytes.extend(pack('B',0))                        # Not enabled right now
                 
-            
+        
+        #test = axis_conversion()
+        
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
         model_bytes = bytearray()
         for obj in model_list:
             mesh = obj.data.copy()
-            ExportSMF.triangulate_mesh(mesh)
+            ExportSMF.prepare_mesh(mesh)
             
             number_of_verts = 3 * len(mesh.polygons)
             size = number_of_verts * SMF_format_size
@@ -167,7 +191,7 @@ class ExportSMF(Operator, ExportHelper):
                     vert = mesh.vertices[loop.vertex_index]
                     model_bytes.extend(pack('fff', *(vert.co[:])))
                     normal_source = vert                              # One of vert, loop, face
-                    normal = [normal_source.normal.x,normal_source.normal.y,normal_source.normal.z]
+                    normal = normal_source.normal
                     model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
                     uv = uv_data[loop.index].uv
                     model_bytes.extend(pack('ff', *(uv[:])))          # uv
@@ -192,11 +216,11 @@ class ExportSMF(Operator, ExportHelper):
                         tex = mat.texture_slots[0].texture
                         tex_name = tex.name
             
-            model_bytes.extend(bytearray(mat_name + '\0','utf-8'))    # Mat name
+            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
             
             # Visible
-            model_bytes.extend(pack('B',int(not obj.hide)))
+            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
             
             # Skinning info (dummy data)
             model_bytes.extend(pack('L',0))                           # n
@@ -218,67 +242,136 @@ class ExportSMF(Operator, ExportHelper):
         
         node_bytes.extend(pack('B',0))                                # nodeNum
         
-        ambient = [floor(component*255) for component in context.scene.world.ambient_color[:]]
+        ambient = [floor(component*255) for component in context.scene.world.color[:]]
         node_bytes.extend(pack('BBB',*ambient))
         
         # Write (the absence of a) collision buffer
         collision_buffer_bytes = bytearray()
-        collision_buffer_bytes.extend(pack('L',0))                    # colBuffSize
+        collision_buffer_bytes.extend(pack('L', 0))                   # colBuffSize
         
         # Write rig
+        # NOTE: Insert a root bone for each bone chain to represent the root node
         rig_bytes = bytearray()
         
-        if rig == None:
+        if not rig:
             # No (valid) armature for export
             rig_bytes.extend(pack('B',0))
         else:
-            rig_bytes.extend(pack('B',len(rig.bones)))            # nodeNum
+            rig_bytes.extend(pack('B',len(rig.bones)))                # nodeNum
+            
+            if len(rig.bones) == 0:
+                self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
+            
+            # TODO Append leaf bones to easily convert to node-based skeleton??
             
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
+
             for bone in rig.bones:
-                parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
-                connected = 0 if bone.parent == None else 1
-                dq = ExportSMF.dual_quaternion(bone.matrix_local,bone.tail_local)
-                rig_bytes.extend(pack('ffffffff',*dq))
-                rig_bytes.extend(pack('B',parent_bone_index))
-                rig_bytes.extend(pack('B',connected))             # Determines SMF parent bone behaviour
-                                                                  # (root/detached from parent or not)
+                """Write a node for each bone
+                   The root bone represents the root node"""
+                if bone.parent:
+                    parent_bone_index = rig.bones.find(bone.parent.name)
+                    connected = True
+                else:
+                    parent_bone_index = 0
+                    connected = False
+                
+                #axis = rig_object.matrix_world @ bone.matrix_local @ Matrix.Rotation(radians(+90), 4, 'Z') @ bone.y_axis
+                axis = bone.matrix_local @ bone.y_axis
+                #axis = rig_object.matrix_world @ bone.vector   # Seems to be identical...
+                #axis[1] = -axis[1]
+                #dq = ExportSMF.dq_from_axis_vector(axis, [bone.tail_local.x,bone.tail_local.y,bone.tail_local.z])
+                dq = ExportSMF.dq_from_axis_vector(axis, bone.tail_local)
+                rig_bytes.extend(pack('ffffffff', *dq))         # eAnimNode.WorldDQ
+                rig_bytes.extend(pack('B', parent_bone_index))
+                rig_bytes.extend(pack('B', connected))          # Determines SMF parent bone behaviour
+                                                                # (root/detached from parent or not)
+            
+            """
+            # Export all bones' heads => that's it!
+            for bone in rig.bones:
+                parent_bone_index = rig.bones.find(bone.parent.name) if bone.parent else 0
+                connected = 1 if bone.parent else 0
+                axis = rig_object.matrix_world @ bone.matrix_local @ bone.y_axis
+                axis[1] = -axis[1]
+                dq = ExportSMF.dq_from_axis_vector(axis, [bone.head_local.x,-bone.head_local.y,bone.head_local.z])
+                rig_bytes.extend(pack('ffffffff', *dq))         # eAnimNode.WorldDQ
+                rig_bytes.extend(pack('B', parent_bone_index))
+                rig_bytes.extend(pack('B', connected))          # Determines SMF parent bone behaviour
+                                                                # (root/detached from parent or not)
+            """
         
         # Write animation
         animation_bytes = bytearray()
         
-        if anim == None:
+        if not anim:
             # No valid animation
-            animation_bytes.extend(pack('B',0))                           # animNum
+            animation_bytes.extend(pack('B', 0))                        # animNum
         else:
             # Single animation in armature object's action
-            animation_bytes.extend(pack('B',1))                           # animNum (one action)
-            animation_bytes.extend(bytearray(anim.name+"\0",'utf-8'))     # animName
+            animation_bytes.extend(pack('B', 1))                        # animNum (one action)
+            animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
             
             # Get the times where the animation has keyframes set
             keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
             keyframe_max = max(keyframe_times)
             
-            animation_bytes.extend(pack('B',len(keyframe_times)))         # keyframeNum
+            print("Times:")
+            print(keyframe_times)
+            print("Max:")
+            print(keyframe_max)
+            
+            animation_bytes.extend(pack('B',len(keyframe_times)))       # keyframeNum
             for keyframe in keyframe_times:
-                # PRE Armature must be in pose position
+                # PRE Armature must be in posed state
                 context.scene.frame_set(keyframe)
                 
-                animation_bytes.extend(pack('f',keyframe/keyframe_max))
+                animation_bytes.extend(pack('f', keyframe / keyframe_max))
                 
-                for bone in rig_object.pose.bones:
-                    dq = ExportSMF.dual_quaternion(bone.matrix,bone.tail)
-                    #animation_bytes.extend(pack('ffffffff',*[0,0,0,1,0,0,0,0]))
-                    animation_bytes.extend(pack('ffffffff',*dq))
+                for pbone in rig_object.pose.bones:
+                    # Get the corresponding rig bone (SMF: BindDQ)
+                    parent_index = rig_object.pose.bones.find(pbone.parent.name) if pbone.parent else 0
+                    rbone = pbone.bone
+                    parent_index = rig.bones.find(rbone.parent.name) if rbone.parent else 0
+                    
+                    #pbone_par = pbone.parent
+                    #rbone_par = rbone.parent
+                    
+                    #par = rbone.parent
+                    #par_world_dq_conj = par.matrix_local.to_quaternion().conjugated() if par else Quaternion()
+                    #dq = ExportSMF.dq_from_quat_vector(par_world_dq_conj @ rbone.matrix_local.to_quaternion() @ pbone.rotation_quaternion @ Quaternion([0, 0, 1, 0]), [pbone.tail.x, -pbone.tail.y, pbone.tail.z])
+                    # SMF has x axis as the bone axis ((x, y, z) maps to (green, blue, red))
+                    
+                    #q_orientation = Quaternion(axis, 0)
+                    #q_orientation = pbone.matrix_basis.to_quaternion()
+                    
+                    #dq = ExportSMF.dq_from_quat_vector(qtn @ Quaternion([0,0,1],radians(90)), [0,0,0])
+                    #dq = ExportSMF.dq_from_quat_vector((pbone.rotation_quaternion @ rbone.matrix.to_quaternion()) @ Quaternion([0,0,1],radians(90)), [0,0,0])
+                    
+                    q = rbone.matrix.to_quaternion()
+                    #q = rotation_difference(q, pbone.matrix.to_quaternion())   # Meh!
+                    print(rbone, q)
+                    q.rotate(Quaternion([0,0,1],radians(90)))
+                    #q = Quaternion(rbone.y_axis, 0)         # Axis-angle representation of bone axis in parent bone space
+                    q.rotate(pbone.rotation_quaternion)
+                    dq = ExportSMF.dq_from_quat_vector(q, [0,0,0])
+                    
+                    #dq = ExportSMF.dq_from_axis_vector(axis, [pbone.vector.x,-pbone.vector.y,pbone.vector.z])
+                    #dq = ExportSMF.dq_from_quat_vector(bone.matrix_local.to_quaternion(), [rbone.head_local.x,-rbone.head_local.y,rbone.head_local.z])
+                    #dq = [0,0.71,0,0.71,0,0,0,0]    # Rotate y +90°
+                    #dq = [-qtn_final.y, qtn_final.x, qtn_final.z, qtn_final.w, 0, rbone.head.x, -rbone.head.y, rbone.head.z]
+                    #dq = [0, 0, 0 , 1, 0, 0, 0, 0]
+                    
+                    animation_bytes.extend(pack('ffffffff', *dq))
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
-        saved_selections_bytes.extend(pack('B',0))                        # selNum
+        saved_selections_bytes.extend(pack('B', 0))                     # selNum
         
         
         # Now build header
-        header_bytes = bytearray("SnidrsModelFormat\0",'utf-8')
+        header_bytes = bytearray("SnidrsModelFormat\0", 'utf-8')
         header_bytes.extend(pack('f', SMF_version))
         
         tex_pos = SMF_header_size
@@ -321,21 +414,21 @@ class ExportSMF(Operator, ExportHelper):
 
 # Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
-    self.layout.operator(ExportSMF.bl_idname, text="Export SMF")
+    self.layout.operator(ExportSMF.bl_idname, text="SnidrsModelFormat (*.smf)")
 
 
 def register():
     bpy.utils.register_class(ExportSMF)
-    bpy.types.INFO_MT_file_export.append(menu_func_export)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
     bpy.utils.unregister_class(ExportSMF)
-    bpy.types.INFO_MT_file_export.remove(menu_func_export)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
 if __name__ == "__main__":
     register()
 
     # test call
-    bpy.ops.export_scene.smf('INVOKE_DEFAULT')
+    #bpy.ops.export_scene.smf('INVOKE_DEFAULT')
