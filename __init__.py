@@ -266,65 +266,28 @@ class ExportSMF(Operator, ExportHelper):
             animation_bytes.extend(pack('B', 1))                        # animNum (one action)
             animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
             
-            # Get the times where the animation has keyframes set
-            keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
-            keyframe_max = max(keyframe_times)
+            animation_bytes.extend(pack('B', True))                     # animLoop
             
-            #"""
-            animation_bytes.extend(pack('B',len(keyframe_times)))       # keyframeNum
-            # for (var f = 0; f < frameNum; f ++)   # in SMF
-            for keyframe in keyframe_times:
+            animation_bytes.extend(pack('f', 1))                        # play time
+            
+            frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
+            frame_max = context.scene.frame_end - context.scene.frame_start
+            animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
+            for frame in frame_indices:
                 # PRE Armature must be in posed state
-                context.scene.frame_set(keyframe)
+                context.scene.frame_set(frame)
                 
-                animation_bytes.extend(pack('f', keyframe / keyframe_max))
-                print("KF ",keyframe)
+                animation_bytes.extend(pack('f', frame / frame_max))
+                print("Frame index ", frame)
                 
-                # Loop through all NODES
-                # (Each Blender bone corresponds to an SMF node
-                #  because of the way we map an armature)
-                #
-                # This is equivalent to the line: 
-                #
-                # for (var i = 0; i < nodeNum; i ++)
-                #
-                # in smf_model_save
-                #
                 for i, bone in enumerate(rig_object.pose.bones):
-                    # Formula: 
-                    # final keyframe DQ = conjugate of parent's world DQ * child world DQ * keyframe DQ
-                    # Important: this is in SMF's frame of reference!
-                    
-                    # Conversion quaternion
-                    q_conv = Quaternion([0, 0, 1], radians(-90))
-                    #q_conv = Quaternion()
-                    
-                    #rig_dq = rig_dqs[i]
-                    
-                    # Conjugate of parent's world DQ
-                    par = bone.parent
-                    if par:
-                        q = par.matrix.to_quaternion()
-                        q = q_conv @ q
-                        mat = q.to_matrix()
-                        dq_parent_world = pydq.dq_create_matrix_vector(par.matrix, par.tail)
-                    else:
-                        dq_parent_world = pydq.dq_create_identity()
-                    
-                    dq_parent_world_conj = pydq.dq_get_conjugate(dq_parent_world)
-                    #dq_parent_world_conj = pydq.dq_get_conjugate(rig_dq)
-                    
-                    # My world DQ AND keyframe DQ
-                    # So this should be the product (child world DQ * keyframe DQ)
-                    dq_world = pydq.dq_create_matrix_vector(bone.matrix, bone.tail)
-                    dq = pydq.dq_get_product(dq_parent_world_conj, dq_world)
-                    dq = pydq.dq_to_tuple_smf(dq)
-                    
+                    mat = bone.matrix_basis
                     print(i, bone.name)
                     print("-----")
-                    print(dq)
+                    print(mat)
+                    print(mat.to_quaternion(), bone.rotation_quaternion)
                     
-                    animation_bytes.extend(pack('ffffffff',*dq))
+                    animation_bytes.extend(pack('f' * 16, *[j for i in mat for j in i]))
             #"""
         
         # Write (the absence of) saved selections
