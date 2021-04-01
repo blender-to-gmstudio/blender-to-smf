@@ -276,18 +276,16 @@ class ExportSMF(Operator, ExportHelper):
             for frame in frame_indices:
                 # PRE Armature must be in posed state
                 context.scene.frame_set(frame)
-                
-                animation_bytes.extend(pack('f', frame / frame_max))
-                print("Frame index ", frame)
-                
                 for i, bone in enumerate(rig_object.pose.bones):
-                    mat = bone.matrix_basis
+                    mat = bone.matrix
                     print(i, bone.name)
                     print("-----")
                     print(mat)
                     print(mat.to_quaternion(), bone.rotation_quaternion)
+                    vals = [j for i in mat.transposed() for j in i]
+                    print(vals)
                     
-                    animation_bytes.extend(pack('f' * 16, *[j for i in mat for j in i]))
+                    animation_bytes.extend(pack('f' * 16, *vals))
             #"""
         
         # Write (the absence of) saved selections
