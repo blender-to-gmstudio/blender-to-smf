@@ -58,6 +58,19 @@ def dq_transform_point(dq, point):
     # TODO
     #return DQ()
 
+def dq_normalize(dq):
+    """Normalize a dual quaternion"""
+    l = 1 / dq.real.magnitude
+    dq.real.normalize()
+    
+    d = dq.real.dot(dq.dual)
+    # d = dq.real[0] * dq.dual[0] + dq.real[1] * dq.dual[1] + dq.real[2] * dq.dual[2] + dq.real[3] * dq.dual[3]
+    dq.dual[0] = (dq.dual[0] - dq.real[0] * d) * l
+    dq.dual[1] = (dq.dual[1] - dq.real[1] * d) * l
+    dq.dual[2] = (dq.dual[2] - dq.real[2] * d) * l
+    dq.dual[3] = (dq.dual[3] - dq.real[3] * d) * l
+    return dq
+
 def dq_to_tuple_smf(dq):
     """Return the tuple representation of the given DQ for use with SMF"""
     return (dq.real.x, dq.real.y, dq.real.z, dq.real.w,

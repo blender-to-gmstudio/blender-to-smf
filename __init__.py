@@ -64,23 +64,6 @@ class ExportSMF(Operator, ExportHelper):
         bm.to_mesh(mesh)
         bm.free()
 
-    @staticmethod
-    # TODO replace with dq_create_matrix_vector of dq module
-    def dual_quaternion(rotation_matrix, vector):
-        """Creates a tuple containing the dual quaternion components out of a rotation matrix and translation vector"""
-        Qr = rotation_matrix.to_quaternion()                        # Rotation axis & angle as quaternion
-        Qd = .5 * Quaternion([0, *vector]) @ Qr
-        return (Qr.x,Qr.y,Qr.z,Qr.w,Qd.x,Qd.y,Qd.z,Qd.w)            # Invert z, invert rotations (Note that SMF stores w last)
-
-    @staticmethod
-    def dq(orientation, vector):
-        """Use the orientation of the bone combined with the location vector"""
-        Qr = Quaternion(orientation, radians(0.0))
-        Qd = .5  * Quaternion([0, *vector]) @ Qr
-        #print(orientation)
-        #print(vector)
-        return (Qr.x,Qr.y,Qr.z,Qr.w,Qd.x,Qd.y,Qd.z,Qd.w)            # Invert y, invert rotations (Note that SMF stores w last)
-
     def execute(self, context):
         # Constants initialization, etc.
         SMF_version = 7
@@ -115,6 +98,7 @@ class ExportSMF(Operator, ExportHelper):
         # Write textures and their image data (same thing as seen from SMF)
         unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
         unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
+        #unique_images = {}
         
         texture_bytes = bytearray()
         texture_bytes.extend(pack('B', len(unique_textures)))       # Number of textures
@@ -262,7 +246,6 @@ class ExportSMF(Operator, ExportHelper):
                 connected = 0 if bone.parent == None else 1
                 #axis = rig_object.matrix_world @ bone.matrix_local @ bone.y_axis
                 #axis[1] = -axis[1]
-                #dq = ExportSMF.dq(axis, [bone.tail_local.x,bone.tail_local.y,bone.tail_local.z])
                 dq = pydq.dq_create_matrix_vector(bone.matrix_local, bone.tail_local)
                 #rig_dqs[i] = dq.copy()
                 dq = pydq.dq_to_tuple_smf(dq)
