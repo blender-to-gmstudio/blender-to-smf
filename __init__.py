@@ -276,9 +276,9 @@ class ExportSMF(Operator, ExportHelper):
             for frame in frame_indices:
                 # PRE Armature must be in posed state
                 context.scene.frame_set(frame)
-                for i, bone in enumerate(rig_object.pose.bones):
+                for k, bone in enumerate(rig_object.pose.bones):
                     mat = bone.matrix
-                    print(i, bone.name)
+                    print(k, bone.name)
                     print("-----")
                     print(mat)
                     print(mat.to_quaternion(), bone.rotation_quaternion)
