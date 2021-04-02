@@ -39,7 +39,29 @@ class ExportSMF(Operator, ExportHelper):
             options={'HIDDEN'},
             maxlen=255,  # Max internal buffer length, longer would be clamped.
             )
-
+    
+    export_textures : BoolProperty(
+            name="Export Textures",
+            description="Whether textures should be exported with the model",
+            default=False,
+            )
+    
+    export_nla_actions : BoolProperty(
+            name="Export Linked Actions",
+            description="Whether to export all actions that are linked to this model through NLA strips (Experimental)",
+            default=False,
+    )
+    
+    export_datatype : EnumProperty(
+            name="Format",
+            description="Which datatype to export the animations",
+            items=(
+              ('DQ', 'Dual Quaternions', 'Save rig and animation data as dual quaternions'),
+              ('MAT', 'Matrices', 'Save rig and animation data as matrices'),
+            ),
+            default="DQ",
+    )
+    
     @staticmethod
     def prepare_mesh(mesh):
         """Triangulate the given mesh using the BMesh library"""
@@ -98,7 +120,7 @@ class ExportSMF(Operator, ExportHelper):
         # Write textures and their image data (same thing as seen from SMF)
         unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
         unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
-        #unique_images = {}
+        unique_images = {}
         
         texture_bytes = bytearray()
         texture_bytes.extend(pack('B', len(unique_textures)))       # Number of textures
@@ -299,7 +321,6 @@ class ExportSMF(Operator, ExportHelper):
                     animation_bytes.extend(pack('fff', *bone.z_axis))
                     print(bone.tail)
                     animation_bytes.extend(pack('fff', *bone.tail))
-            #"""
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
