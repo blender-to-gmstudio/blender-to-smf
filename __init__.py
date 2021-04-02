@@ -268,7 +268,7 @@ class ExportSMF(Operator, ExportHelper):
             
             animation_bytes.extend(pack('B', True))                     # animLoop
             
-            animation_bytes.extend(pack('f', 1))                        # play time
+            animation_bytes.extend(pack('f', 1000))                        # play time (ms)
             
             frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
             frame_max = context.scene.frame_end - context.scene.frame_start
@@ -277,7 +277,7 @@ class ExportSMF(Operator, ExportHelper):
                 # PRE Armature must be in posed state
                 context.scene.frame_set(frame)
                 for k, bone in enumerate(rig_object.pose.bones):
-                    mat = bone.matrix
+                    mat = bone.matrix_basis
                     print(k, bone.name)
                     print("-----")
                     print(mat)
@@ -286,6 +286,10 @@ class ExportSMF(Operator, ExportHelper):
                     print(vals)
                     
                     animation_bytes.extend(pack('f' * 16, *vals))
+                    animation_bytes.extend(pack('fff', *bone.x_axis))
+                    animation_bytes.extend(pack('fff', *bone.y_axis))
+                    animation_bytes.extend(pack('fff', *bone.z_axis))
+                    animation_bytes.extend(pack('fff', *bone.tail))
             #"""
         
         # Write (the absence of) saved selections
