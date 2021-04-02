@@ -283,12 +283,16 @@ class ExportSMF(Operator, ExportHelper):
                     print(mat)
                     print(mat.to_quaternion(), bone.rotation_quaternion)
                     vals = [j for i in mat.transposed() for j in i]
-                    print(vals)
                     
+                    print(vals)
                     animation_bytes.extend(pack('f' * 16, *vals))
+                    print(bone.x_axis)
                     animation_bytes.extend(pack('fff', *bone.x_axis))
+                    print(bone.y_axis)
                     animation_bytes.extend(pack('fff', *bone.y_axis))
+                    print(bone.z_axis)
                     animation_bytes.extend(pack('fff', *bone.z_axis))
+                    print(bone.tail)
                     animation_bytes.extend(pack('fff', *bone.tail))
             #"""
         
