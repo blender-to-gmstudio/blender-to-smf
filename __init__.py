@@ -263,12 +263,14 @@ class ExportSMF(Operator, ExportHelper):
             animation_bytes.extend(pack('B', 0))                        # animNum
         else:
             # Single animation in armature object's action
+            print("ANIMATION")
+            print("---")
             animation_bytes.extend(pack('B', 1))                        # animNum (one action)
             animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
             
             animation_bytes.extend(pack('B', True))                     # animLoop
             
-            animation_bytes.extend(pack('f', 1000))                        # play time (ms)
+            animation_bytes.extend(pack('f', 1000))                     # play time (ms)
             
             frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
             frame_max = context.scene.frame_end - context.scene.frame_start
@@ -276,9 +278,12 @@ class ExportSMF(Operator, ExportHelper):
             for frame in frame_indices:
                 # PRE Armature must be in posed state
                 context.scene.frame_set(frame)
-                for k, bone in enumerate(rig_object.pose.bones):
+                for k, rbone in enumerate(rig.bones):
+                    bone = rig_object.pose.bones[rbone.name]
                     mat = bone.matrix_basis
-                    print(k, bone.name)
+                    print(k, bone.name, bone.bone.name)
+                    #if bone.bone.name != bone.name:
+                    #    print("ISSUE HERE!")
                     print("-----")
                     print(mat)
                     print(mat.to_quaternion(), bone.rotation_quaternion)
