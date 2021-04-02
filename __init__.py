@@ -117,58 +117,60 @@ class ExportSMF(Operator, ExportHelper):
             if len(armature_list) > 1:
                 self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
         
-        # Write textures and their image data (same thing as seen from SMF)
-        unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
-        unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
-        unique_images = {}
-        
         texture_bytes = bytearray()
-        texture_bytes.extend(pack('B', len(unique_textures)))       # Number of textures
-        for tex in unique_textures:
-            img = tex.image
-            channels, item_number = img.channels, len(img.pixels)
-            pixel_number = int(item_number/channels)
-            
-            texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))# Texture name
-            texture_bytes.extend(pack('HH',*img.size))              # Texture size (w,h)
-            
-            bytedata = [floor(component*255) for component in img.pixels[:]]
-            texture_bytes.extend(pack('B'*item_number,*bytedata))
-        
-        # Write materials
         material_bytes = bytearray()
-        material_bytes.extend(pack('B', len(bpy.data.materials)))
-        for mat in unique_materials:
-            # Determine SMF material type
-            if mat.use_shadeless:
-                mat_type = 0
-            else:
-                mat_type = 2                                              # Per-fragment shading
-            
-            # Basic info for all material types
-            material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))    # Material name
-            material_bytes.extend(pack('B',mat_type))                     # Material type
-            
-            if mat_type > 0:
-                # Effect modifiers
-                spec_int = int(mat.specular_intensity*127)
-                material_bytes.extend(pack('B',spec_int))                 # SpecReflectance
-                material_bytes.extend(pack('B',mat.specular_hardness))    # SpecDamping
-                material_bytes.extend(pack('B',1))                        # CelSteps
-                material_bytes.extend(pack('B',0))                        # RimPower
-                material_bytes.extend(pack('B',0))                        # RimFactor
-                
-                # Normal map
-                material_bytes.extend(pack('B',0))                        # Not enabled right now
-                
-                # Outlines
-                material_bytes.extend(pack('B',0))                        # Not enabled right now
-                
-                # Reflection
-                material_bytes.extend(pack('B',0))                        # Not enabled right now
-                
         
-        #test = axis_conversion()
+        if self.export_textures:
+            # Write textures and their image data (same thing as seen from SMF)
+            unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
+            unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
+            #unique_images = {}
+            
+            texture_bytes.extend(pack('B', len(unique_textures)))       # Number of textures
+            for tex in unique_textures:
+                img = tex.image
+                channels, item_number = img.channels, len(img.pixels)
+                pixel_number = int(item_number/channels)
+                
+                texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))# Texture name
+                texture_bytes.extend(pack('HH',*img.size))              # Texture size (w,h)
+                
+                bytedata = [floor(component*255) for component in img.pixels[:]]
+                texture_bytes.extend(pack('B'*item_number,*bytedata))
+            
+            # Write materials
+            material_bytes.extend(pack('B', len(bpy.data.materials)))
+            for mat in unique_materials:
+                # Determine SMF material type
+                if mat.use_shadeless:
+                    mat_type = 0
+                else:
+                    mat_type = 2                                              # Per-fragment shading
+                
+                # Basic info for all material types
+                material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))    # Material name
+                material_bytes.extend(pack('B',mat_type))                     # Material type
+                
+                if mat_type > 0:
+                    # Effect modifiers
+                    spec_int = int(mat.specular_intensity*127)
+                    material_bytes.extend(pack('B',spec_int))                 # SpecReflectance
+                    material_bytes.extend(pack('B',mat.specular_hardness))    # SpecDamping
+                    material_bytes.extend(pack('B',1))                        # CelSteps
+                    material_bytes.extend(pack('B',0))                        # RimPower
+                    material_bytes.extend(pack('B',0))                        # RimFactor
+                    
+                    # Normal map
+                    material_bytes.extend(pack('B',0))                        # Not enabled right now
+                    
+                    # Outlines
+                    material_bytes.extend(pack('B',0))                        # Not enabled right now
+                    
+                    # Reflection
+                    material_bytes.extend(pack('B',0))                        # Not enabled right now
+        else:
+            material_bytes.extend(pack('B', 0))                         # No materials
+            texture_bytes.extend(pack('B', 0))                          # No textures
         
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
@@ -197,8 +199,10 @@ class ExportSMF(Operator, ExportHelper):
                     indices, weights = [0,0,0,0], [0,0,0,0]
                     for index,group in enumerate(vert.groups[0:4]):   # 4 bone weights max!
                         indices[index] = group.group
-                        weights[index] = int(group.weight*255)
+                        w = group.weight*255
+                        weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
                     model_bytes.extend(pack('BBBB', *indices))        # Bone indices
+                    print(weights)
                     model_bytes.extend(pack('BBBB', *weights))        # Bone weights
             
             # Mat and tex name
@@ -304,8 +308,6 @@ class ExportSMF(Operator, ExportHelper):
                     bone = rig_object.pose.bones[rbone.name]
                     mat = bone.matrix_basis
                     print(k, bone.name, bone.bone.name)
-                    #if bone.bone.name != bone.name:
-                    #    print("ISSUE HERE!")
                     print("-----")
                     print(mat)
                     print(mat.to_quaternion(), bone.rotation_quaternion)
