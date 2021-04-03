@@ -281,48 +281,101 @@ class ExportSMF(Operator, ExportHelper):
                 rig_bytes.extend(pack('B',connected))             # Determines SMF parent bone behaviour
         
                                                                   # (root/detached from parent or not)
-        # Write animation
+        # Write animations
         animation_bytes = bytearray()
         
-        if not anim:
-            # No valid animation
-            animation_bytes.extend(pack('B', 0))                        # animNum
-        else:
-            # Single animation in armature object's action
-            print("ANIMATION")
-            print("---")
-            animation_bytes.extend(pack('B', 1))                        # animNum (one action)
-            animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
-            
-            animation_bytes.extend(pack('B', True))                     # animLoop
-            
-            animation_bytes.extend(pack('f', 1000))                     # play time (ms)
-            
+        # Export each NLA track linked to the armature object as an animation
+        # (use the first action's name as the animation name for now)
+        if self.export_nla_actions:
+            # Basic variables
             frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
             frame_max = context.scene.frame_end - context.scene.frame_start
-            animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
-            for frame in frame_indices:
-                # PRE Armature must be in posed state
-                context.scene.frame_set(frame)
-                for k, rbone in enumerate(rig.bones):
-                    bone = rig_object.pose.bones[rbone.name]
-                    mat = bone.matrix_basis
-                    print(k, bone.name, bone.bone.name)
-                    print("-----")
-                    print(mat)
-                    print(mat.to_quaternion(), bone.rotation_quaternion)
-                    vals = [j for i in mat.transposed() for j in i]
-                    
-                    print(vals)
-                    animation_bytes.extend(pack('f' * 16, *vals))
-                    print(bone.x_axis)
-                    animation_bytes.extend(pack('fff', *bone.x_axis))
-                    print(bone.y_axis)
-                    animation_bytes.extend(pack('fff', *bone.y_axis))
-                    print(bone.z_axis)
-                    animation_bytes.extend(pack('fff', *bone.z_axis))
-                    print(bone.tail)
-                    animation_bytes.extend(pack('fff', *bone.tail))
+            
+            # Search for the presence of NLA tracks
+            if rig_object.animation_data:
+                if rig_object.animation_data.nla_tracks:
+                    # We have NLA tracks
+                    tracks = rig_object.animation_data.nla_tracks
+                    animation_bytes.extend(pack('B', len(tracks)))                          # animNum
+                    for track in tracks:
+                        strips = track.strips
+                        if (len(strips) > 0):
+                            strip = strips[0]
+                            animation_bytes.extend(bytearray(strip.name + "\0", 'utf-8'))   # animName
+                            animation_bytes.extend(pack('B', True))                         # animLoop
+                            animation_bytes.extend(pack('f', 1000))                         # play time (ms)
+                            
+                            # Play each track in solo to get each animation
+                            # Make sure to reset the frame in advance so the rig gets reset properly
+                            context.scene.frame_set(context.scene.frame_start)
+                            track.is_solo = True
+                            
+                            animation_bytes.extend(pack('I', frame_max))                    # animFrameNumber
+                            for frame in frame_indices:
+                                # PRE Armature must be in posed state
+                                context.scene.frame_set(frame)
+                                for k, rbone in enumerate(rig.bones):
+                                    bone = rig_object.pose.bones[rbone.name]
+                                    mat = bone.matrix_basis
+                                    print(k, bone.name, bone.bone.name)
+                                    print("-----")
+                                    print(mat)
+                                    print(mat.to_quaternion(), bone.rotation_quaternion)
+                                    vals = [j for i in mat.transposed() for j in i]
+                                    
+                                    print(vals)
+                                    animation_bytes.extend(pack('f' * 16, *vals))
+                                    print(bone.x_axis)
+                                    animation_bytes.extend(pack('fff', *bone.x_axis))
+                                    print(bone.y_axis)
+                                    animation_bytes.extend(pack('fff', *bone.y_axis))
+                                    print(bone.z_axis)
+                                    animation_bytes.extend(pack('fff', *bone.z_axis))
+                                    print(bone.tail)
+                                    animation_bytes.extend(pack('fff', *bone.tail))
+                        else:
+                            # A bit of an issue here...
+                            pass
+        else:
+            if not anim:
+                # No valid animation
+                animation_bytes.extend(pack('B', 0))                        # animNum
+            else:
+                # Single animation in armature object's action
+                print("ANIMATION")
+                print("---")
+                animation_bytes.extend(pack('B', 1))                        # animNum (one action)
+                animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
+                
+                animation_bytes.extend(pack('B', True))                     # animLoop
+                
+                animation_bytes.extend(pack('f', 1000))                     # play time (ms)
+                
+                frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
+                frame_max = context.scene.frame_end - context.scene.frame_start
+                animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
+                for frame in frame_indices:
+                    # PRE Armature must be in posed state
+                    context.scene.frame_set(frame)
+                    for k, rbone in enumerate(rig.bones):
+                        bone = rig_object.pose.bones[rbone.name]
+                        mat = bone.matrix_basis
+                        print(k, bone.name, bone.bone.name)
+                        print("-----")
+                        print(mat)
+                        print(mat.to_quaternion(), bone.rotation_quaternion)
+                        vals = [j for i in mat.transposed() for j in i]
+                        
+                        print(vals)
+                        animation_bytes.extend(pack('f' * 16, *vals))
+                        print(bone.x_axis)
+                        animation_bytes.extend(pack('fff', *bone.x_axis))
+                        print(bone.y_axis)
+                        animation_bytes.extend(pack('fff', *bone.y_axis))
+                        print(bone.z_axis)
+                        animation_bytes.extend(pack('fff', *bone.z_axis))
+                        print(bone.tail)
+                        animation_bytes.extend(pack('fff', *bone.tail))
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
