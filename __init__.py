@@ -297,7 +297,9 @@ class ExportSMF(Operator, ExportHelper):
                     # We have NLA tracks
                     tracks = rig_object.animation_data.nla_tracks
                     animation_bytes.extend(pack('B', len(tracks)))                          # animNum
+                    print(len(tracks))
                     for track in tracks:
+                        print("Track ", track.name)
                         strips = track.strips
                         if (len(strips) > 0):
                             strip = strips[0]
@@ -335,6 +337,7 @@ class ExportSMF(Operator, ExportHelper):
                                     animation_bytes.extend(pack('fff', *bone.tail))
                         else:
                             # A bit of an issue here...
+                            print("We're not supposed to be here...")
                             pass
         else:
             if not anim:
