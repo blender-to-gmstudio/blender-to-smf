@@ -46,9 +46,9 @@ class ExportSMF(Operator, ExportHelper):
             default=False,
             )
     
-    export_nla_actions : BoolProperty(
-            name="Export Linked Actions",
-            description="Whether to export all actions that are linked to this model through NLA strips (Experimental)",
+    export_nla_tracks : BoolProperty(
+            name="Export NLA Tracks",
+            description="Whether to export multiple animations on all NLA tracks that are linked to this model (Experimental)",
             default=False,
     )
     
@@ -139,7 +139,7 @@ class ExportSMF(Operator, ExportHelper):
                 texture_bytes.extend(pack('B'*item_number,*bytedata))
             
             # Write materials
-            material_bytes.extend(pack('B', len(bpy.data.materials)))
+            material_bytes.extend(pack('B', len(unique_materials)))
             for mat in unique_materials:
                 # Determine SMF material type
                 if mat.use_shadeless:
@@ -202,20 +202,20 @@ class ExportSMF(Operator, ExportHelper):
                         w = group.weight*255
                         weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
                     model_bytes.extend(pack('BBBB', *indices))        # Bone indices
-                    print(weights)
+                    #print(weights)
                     model_bytes.extend(pack('BBBB', *weights))        # Bone weights
             
             # Mat and tex name
             mat_name = ""
             tex_name = ""
             if len(obj.material_slots) > 0:
-                ms = obj.material_slots[0]
-                if ms.material != None:
-                    mat = ms.material
+                slot = obj.material_slots[0]
+                if slot.material:
+                    mat = slot.material
                     mat_name = mat.name
-                    if mat.texture_slots[0] != None:
-                        tex = mat.texture_slots[0].texture
-                        tex_name = tex.name
+                    #if mat.texture_slots[0] != None:
+                    #    tex = mat.texture_slots[0].texture
+                    #tex_name = tex.name
             
             model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
@@ -286,59 +286,68 @@ class ExportSMF(Operator, ExportHelper):
         
         # Export each NLA track linked to the armature object as an animation
         # (use the first action's name as the animation name for now)
-        if self.export_nla_actions:
-            # Basic variables
-            frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
-            frame_max = context.scene.frame_end - context.scene.frame_start
-            
+        if self.export_nla_tracks:
             # Search for the presence of NLA tracks
             if rig_object.animation_data:
                 if rig_object.animation_data.nla_tracks:
+                    # Remember current action first
+                    action = rig_object.animation_data.action
+                    rig_object.animation_data.action = None
+                    
                     # We have NLA tracks
                     tracks = rig_object.animation_data.nla_tracks
                     animation_bytes.extend(pack('B', len(tracks)))                          # animNum
-                    print(len(tracks))
+                    print("Exporting ", len(tracks), " animations")
                     for track in tracks:
                         print("Track ", track.name)
                         strips = track.strips
                         if (len(strips) > 0):
+                            print("Strips: ", len(strips))
                             strip = strips[0]
+                            print(strip.name)
+                            frame_indices = range(int(strip.action_frame_start), int(strip.action_frame_end+1))
+                            frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
                             animation_bytes.extend(bytearray(strip.name + "\0", 'utf-8'))   # animName
                             animation_bytes.extend(pack('B', True))                         # animLoop
                             animation_bytes.extend(pack('f', 1000))                         # play time (ms)
+                            animation_bytes.extend(pack('I', frame_max))                    # animFrameNumber
                             
-                            # Play each track in solo to get each animation
+                            # Now play each track in solo and sample each animation
                             # Make sure to reset the frame in advance so the rig gets reset properly
                             context.scene.frame_set(context.scene.frame_start)
                             track.is_solo = True
                             
-                            animation_bytes.extend(pack('I', frame_max))                    # animFrameNumber
                             for frame in frame_indices:
                                 # PRE Armature must be in posed state
                                 context.scene.frame_set(frame)
                                 for k, rbone in enumerate(rig.bones):
                                     bone = rig_object.pose.bones[rbone.name]
                                     mat = bone.matrix_basis
-                                    print(k, bone.name, bone.bone.name)
-                                    print("-----")
-                                    print(mat)
-                                    print(mat.to_quaternion(), bone.rotation_quaternion)
+                                    #print(k, bone.name, bone.bone.name)
+                                    #print("-----")
+                                    #print(mat)
+                                    #print(mat.to_quaternion(), bone.rotation_quaternion)
                                     vals = [j for i in mat.transposed() for j in i]
                                     
-                                    print(vals)
+                                    #print(vals)
                                     animation_bytes.extend(pack('f' * 16, *vals))
-                                    print(bone.x_axis)
+                                    #print(bone.x_axis)
                                     animation_bytes.extend(pack('fff', *bone.x_axis))
-                                    print(bone.y_axis)
+                                    #print(bone.y_axis)
                                     animation_bytes.extend(pack('fff', *bone.y_axis))
-                                    print(bone.z_axis)
+                                    #print(bone.z_axis)
                                     animation_bytes.extend(pack('fff', *bone.z_axis))
-                                    print(bone.tail)
+                                    #print(bone.tail)
                                     animation_bytes.extend(pack('fff', *bone.tail))
                         else:
                             # A bit of an issue here...
                             print("We're not supposed to be here...")
                             pass
+                    
+                    # Restore things
+                    rig_object.animation_data.action = action
+                    for track in tracks:
+                        track.is_solo = False
         else:
             if not anim:
                 # No valid animation
