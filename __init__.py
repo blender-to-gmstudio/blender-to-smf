@@ -70,6 +70,7 @@ class ExportSMF(Operator, ExportHelper):
         bm = bmesh.new()
         bm.from_mesh(mesh)
         
+        """
         geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
         # See https://blender.stackexchange.com/a/122321
         bmesh.ops.mirror(bm,
@@ -80,6 +81,7 @@ class ExportSMF(Operator, ExportHelper):
         )
         bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
         bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+        """
         
         bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
         
@@ -91,7 +93,7 @@ class ExportSMF(Operator, ExportHelper):
         SMF_version = 7
         SMF_format_size = 44
         SMF_header_size = 79
-         
+        
         # Figure out what we're going to export
         object_list = context.selected_objects
         model_list = [o for o in object_list if o.type=='MESH']
@@ -284,6 +286,26 @@ class ExportSMF(Operator, ExportHelper):
         # Write animations
         animation_bytes = bytearray()
         
+        def write_animation_data(context, byte_data, rig_object, frame_indices):
+            """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
+            # PRE Skeleton must be in Pose Position (see Armature.pose_position)
+            frame_prev = context.scene.frame_current
+            for frame in frame_indices:
+                context.scene.frame_set(frame)
+                
+                # Loop through the armature's PoseBones using its Bone order (!)
+                # This guarantees a correct mapping of PoseBones to Bones
+                for rbone in rig_object.data.bones:
+                    bone = rig_object.pose.bones[rbone.name]        # The name is identical (!)
+                    mat = bone.matrix_basis
+                    vals = [j for i in mat.transposed() for j in i] # Convert to GM's matrix element order
+                    vals[12:15] = bone.tail[:]                      # Set the translation to the bone's tail
+                    byte_data.extend(pack('f' * len(vals), *vals))
+                    # TODO Add a DQ version!
+            
+            # Restore frame position
+            context_scene.frame_set(frame_prev)
+        
         # Export each NLA track linked to the armature object as an animation
         # (use the first action's name as the animation name for now)
         if self.export_nla_tracks:
@@ -317,28 +339,7 @@ class ExportSMF(Operator, ExportHelper):
                             context.scene.frame_set(context.scene.frame_start)
                             track.is_solo = True
                             
-                            for frame in frame_indices:
-                                # PRE Armature must be in posed state
-                                context.scene.frame_set(frame)
-                                for k, rbone in enumerate(rig.bones):
-                                    bone = rig_object.pose.bones[rbone.name]
-                                    mat = bone.matrix_basis
-                                    #print(k, bone.name, bone.bone.name)
-                                    #print("-----")
-                                    #print(mat)
-                                    #print(mat.to_quaternion(), bone.rotation_quaternion)
-                                    vals = [j for i in mat.transposed() for j in i]
-                                    
-                                    #print(vals)
-                                    animation_bytes.extend(pack('f' * 16, *vals))
-                                    #print(bone.x_axis)
-                                    animation_bytes.extend(pack('fff', *bone.x_axis))
-                                    #print(bone.y_axis)
-                                    animation_bytes.extend(pack('fff', *bone.y_axis))
-                                    #print(bone.z_axis)
-                                    animation_bytes.extend(pack('fff', *bone.z_axis))
-                                    #print(bone.tail)
-                                    animation_bytes.extend(pack('fff', *bone.tail))
+                            write_animation_data(context, animation_bytes, rig_object, frame_indices)
                         else:
                             # A bit of an issue here...
                             print("We're not supposed to be here...")
@@ -366,28 +367,8 @@ class ExportSMF(Operator, ExportHelper):
                 frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
                 frame_max = context.scene.frame_end - context.scene.frame_start
                 animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
-                for frame in frame_indices:
-                    # PRE Armature must be in posed state
-                    context.scene.frame_set(frame)
-                    for k, rbone in enumerate(rig.bones):
-                        bone = rig_object.pose.bones[rbone.name]
-                        mat = bone.matrix_basis
-                        print(k, bone.name, bone.bone.name)
-                        print("-----")
-                        print(mat)
-                        print(mat.to_quaternion(), bone.rotation_quaternion)
-                        vals = [j for i in mat.transposed() for j in i]
-                        
-                        print(vals)
-                        animation_bytes.extend(pack('f' * 16, *vals))
-                        print(bone.x_axis)
-                        animation_bytes.extend(pack('fff', *bone.x_axis))
-                        print(bone.y_axis)
-                        animation_bytes.extend(pack('fff', *bone.y_axis))
-                        print(bone.z_axis)
-                        animation_bytes.extend(pack('fff', *bone.z_axis))
-                        print(bone.tail)
-                        animation_bytes.extend(pack('fff', *bone.tail))
+                
+                write_animation_data(context, animation_bytes, rig.bones, frame_indices)
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
