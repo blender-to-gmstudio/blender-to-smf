@@ -286,7 +286,7 @@ class ExportSMF(Operator, ExportHelper):
         # Write animations
         animation_bytes = bytearray()
         
-        def write_animation_data(context, byte_data, rig_object, frame_indices):
+        def write_animation_data(context, byte_data, rig_object, frame_indices, datatype):
             """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
             # PRE Skeleton must be in Pose Position (see Armature.pose_position)
             frame_prev = context.scene.frame_current
@@ -298,10 +298,17 @@ class ExportSMF(Operator, ExportHelper):
                 for rbone in rig_object.data.bones:
                     bone = rig_object.pose.bones[rbone.name]        # The name is identical (!)
                     mat = bone.matrix_basis
-                    vals = [j for i in mat.transposed() for j in i] # Convert to GM's matrix element order
-                    vals[12:15] = bone.tail[:]                      # Set the translation to the bone's tail
+                    
+                    if datatype == 'MAT':
+                        # Matrix version
+                        vals = [j for i in mat.transposed() for j in i] # Convert to GM's matrix element order
+                        vals[12:15] = bone.tail[:]                      # Set the translation part to the bone's tail
+                    elif datatype == 'DQ':
+                        # DQ version
+                        dq = pydq.dq_create_matrix_vector(mat, bone.tail)
+                        vals = pydq.dq_to_tuple_smf(dq)
+                    
                     byte_data.extend(pack('f' * len(vals), *vals))
-                    # TODO Add a DQ version!
             
             # Restore frame position
             context_scene.frame_set(frame_prev)
@@ -312,21 +319,28 @@ class ExportSMF(Operator, ExportHelper):
             # Search for the presence of NLA tracks
             if rig_object.animation_data:
                 if rig_object.animation_data.nla_tracks:
-                    # Remember current action first
+                    # Clear the influence of the current action
                     action = rig_object.animation_data.action
                     rig_object.animation_data.action = None
                     
                     # We have NLA tracks
                     tracks = rig_object.animation_data.nla_tracks
                     animation_bytes.extend(pack('B', len(tracks)))                          # animNum
-                    print("Exporting ", len(tracks), " animations")
+                    
                     for track in tracks:
                         print("Track ", track.name)
                         strips = track.strips
-                        if (len(strips) > 0):
+                        if len(strips) > 0:
                             print("Strips: ", len(strips))
                             strip = strips[0]
                             print(strip.name)
+                            
+                            # Now play each track in solo and sample each animation
+                            # Make sure to reset the frame in advance so the rig gets reset properly
+                            context.scene.frame_set(context.scene.frame_start)
+                            
+                            track.is_solo = True
+                            
                             frame_indices = range(int(strip.action_frame_start), int(strip.action_frame_end+1))
                             frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
                             animation_bytes.extend(bytearray(strip.name + "\0", 'utf-8'))   # animName
@@ -334,12 +348,9 @@ class ExportSMF(Operator, ExportHelper):
                             animation_bytes.extend(pack('f', 1000))                         # play time (ms)
                             animation_bytes.extend(pack('I', frame_max))                    # animFrameNumber
                             
-                            # Now play each track in solo and sample each animation
-                            # Make sure to reset the frame in advance so the rig gets reset properly
-                            context.scene.frame_set(context.scene.frame_start)
-                            track.is_solo = True
+                            write_animation_data(context, animation_bytes, rig_object, frame_indices, self.export_datatype)
                             
-                            write_animation_data(context, animation_bytes, rig_object, frame_indices)
+                            track.is_solo = False
                         else:
                             # A bit of an issue here...
                             print("We're not supposed to be here...")
@@ -347,28 +358,22 @@ class ExportSMF(Operator, ExportHelper):
                     
                     # Restore things
                     rig_object.animation_data.action = action
-                    for track in tracks:
-                        track.is_solo = False
         else:
             if not anim:
                 # No valid animation
                 animation_bytes.extend(pack('B', 0))                        # animNum
             else:
                 # Single animation in armature object's action
-                print("ANIMATION")
-                print("---")
                 animation_bytes.extend(pack('B', 1))                        # animNum (one action)
-                animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
-                
-                animation_bytes.extend(pack('B', True))                     # animLoop
-                
-                animation_bytes.extend(pack('f', 1000))                     # play time (ms)
                 
                 frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
-                frame_max = context.scene.frame_end - context.scene.frame_start
+                frame_max = int(context.scene.frame_end - context.scene.frame_start)
+                animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
+                animation_bytes.extend(pack('B', True))                     # animLoop
+                animation_bytes.extend(pack('f', 1000))                     # play time (ms)
                 animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
                 
-                write_animation_data(context, animation_bytes, rig.bones, frame_indices)
+                write_animation_data(context, animation_bytes, rig_object, frame_indices, self.export_datatype)
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
