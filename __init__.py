@@ -311,7 +311,7 @@ class ExportSMF(Operator, ExportHelper):
                     byte_data.extend(pack('f' * len(vals), *vals))
             
             # Restore frame position
-            context_scene.frame_set(frame_prev)
+            context.scene.frame_set(frame_prev)
         
         # Export each NLA track linked to the armature object as an animation
         # (use the first action's name as the animation name for now)
