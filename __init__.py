@@ -269,16 +269,21 @@ class ExportSMF(Operator, ExportHelper):
             print("---")
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
-            for i, bone in enumerate(rig.bones):
+            for bone in rig.bones:
                 parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
                 connected = 0 if bone.parent == None else 1
-                #axis = rig_object.matrix_world @ bone.matrix_local @ bone.y_axis
-                #axis[1] = -axis[1]
-                dq = pydq.dq_create_matrix_vector(bone.matrix_local, bone.tail_local)
-                #rig_dqs[i] = dq.copy()
-                dq = pydq.dq_to_tuple_smf(dq)
-                print(i, bone.name, " - ", dq)
-                rig_bytes.extend(pack('ffffffff', *dq))
+                mat = bone.matrix_local
+                
+                if self.export_datatype == 'MAT':
+                    vals = [j for i in mat.transposed() for j in i]
+                    vals[12:15] = bone.tail_local[:]
+                elif self.export_datatype == 'DQ':
+                    dq = pydq.dq_create_matrix_vector(mat, bone.tail_local)
+                    vals = pydq.dq_to_tuple_smf(dq)
+                else:
+                    pass
+                    
+                rig_bytes.extend(pack('f'*len(vals), *vals))
                 rig_bytes.extend(pack('B',parent_bone_index))
                 rig_bytes.extend(pack('B',connected))             # Determines SMF parent bone behaviour
         
@@ -307,6 +312,8 @@ class ExportSMF(Operator, ExportHelper):
                         # DQ version
                         dq = pydq.dq_create_matrix_vector(mat, bone.tail)
                         vals = pydq.dq_to_tuple_smf(dq)
+                    else:
+                        pass
                     
                     byte_data.extend(pack('f' * len(vals), *vals))
             
