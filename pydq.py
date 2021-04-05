@@ -30,6 +30,12 @@ def dq_create_matrix_vector(matrix, vector):
     real = matrix.to_quaternion()
     return DQ(real, .5 * Quaternion([0, *vector]) @ real)
 
+def dq_create_matrix(matrix):
+    """Return a new DQ from the given 4x4 matrix, which includes a translation vector"""
+    translation = matrix.col[3][0:3]
+    real = matrix.to_quaternion()
+    return DQ(real, .5 * Quaternion([0, *translation]) @ real)
+
 def dq_create_axis_angle_vector(axis, angle, vector):
     """Return a new DQ from the given axis/angle and translation vector"""
     real = Quaternion(axis, angle)

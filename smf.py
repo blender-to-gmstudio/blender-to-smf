@@ -1,6 +1,5 @@
 # SMF export scripts for Blender
 #
-#import dq
 from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
 
 SMF_version = 7

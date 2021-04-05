@@ -24,6 +24,19 @@ from bpy_extras.io_utils import ExportHelper, axis_conversion
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
+def matrix_to_smf(matrix, translation):
+    """Modifies the contents of a 4x4 mathutils.Matrix so that it can be used with SMF"""
+    # Shuffle the columns to correspond to SMF
+    # Column order [A, B, C, D] becomes [B, C, A, D]
+    col0 = matrix.col[0][0:3]
+    matrix.col[0][0:3] = matrix.col[1][0:3]
+    matrix.col[1][0:3] = matrix.col[2][0:3]
+    matrix.col[2][0:3] = col0
+    
+    # Overwrite the translation part by the one provided
+    matrix.col[3][0:3] = translation[:]
+    
+    return matrix
 
 class ExportSMF(Operator, ExportHelper):
     """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
@@ -50,16 +63,6 @@ class ExportSMF(Operator, ExportHelper):
             name="Export NLA Tracks",
             description="Whether to export multiple animations on all NLA tracks that are linked to this model (Experimental)",
             default=False,
-    )
-    
-    export_datatype : EnumProperty(
-            name="Format",
-            description="Which datatype to export the animations",
-            items=(
-              ('DQ', 'Dual Quaternions', 'Save rig and animation data as dual quaternions'),
-              ('MAT', 'Matrices', 'Save rig and animation data as matrices'),
-            ),
-            default="DQ",
     )
     
     @staticmethod
@@ -272,18 +275,20 @@ class ExportSMF(Operator, ExportHelper):
             for bone in rig.bones:
                 parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
                 connected = 0 if bone.parent == None else 1
-                mat = bone.matrix_local
                 
-                if self.export_datatype == 'MAT':
-                    vals = [j for i in mat.transposed() for j in i]
-                    vals[12:15] = bone.tail_local[:]
-                elif self.export_datatype == 'DQ':
-                    dq = pydq.dq_create_matrix_vector(mat, bone.tail_local)
-                    vals = pydq.dq_to_tuple_smf(dq)
-                else:
-                    pass
-                    
-                rig_bytes.extend(pack('f'*len(vals), *vals))
+                # Create a matrix, useable by SMF, from the 3x3 bone matrix and the bone's tail
+                mat = matrix_to_smf(bone.matrix.to_4x4(), bone.tail)
+                
+                # Create a DQ and convert to a tuple that can be written directly
+                dq = pydq.dq_create_matrix(mat)
+                dq_values = pydq.dq_to_tuple_smf(dq)
+                
+                print(bone.name)
+                print(mat)
+                print(dq)
+                print(dq_values)
+                
+                rig_bytes.extend(pack('ffffffff', *dq_values))
                 rig_bytes.extend(pack('B',parent_bone_index))
                 rig_bytes.extend(pack('B',connected))             # Determines SMF parent bone behaviour
         
@@ -291,37 +296,61 @@ class ExportSMF(Operator, ExportHelper):
         # Write animations
         animation_bytes = bytearray()
         
-        def write_animation_data(context, byte_data, rig_object, frame_indices, datatype):
+        def write_animation_data(context, byte_data, rig_object, frame_indices):
             """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
             # PRE Skeleton must be in Pose Position (see Armature.pose_position)
             frame_prev = context.scene.frame_current
             for frame in frame_indices:
                 context.scene.frame_set(frame)
                 
+                kf_time = frame/21 # Yuck! Hard-coded test value!
+                
+                byte_data.extend(pack('f', kf_time))
+                
+                print("Frame ", frame, " at time ", kf_time)
+                
                 # Loop through the armature's PoseBones using its Bone order (!)
                 # This guarantees a correct mapping of PoseBones to Bones
                 for rbone in rig_object.data.bones:
-                    bone = rig_object.pose.bones[rbone.name]        # The name is identical (!)
-                    mat = bone.matrix_basis
+                    # Get the bone (The name is identical (!))
+                    bone = rig_object.pose.bones[rbone.name]
                     
-                    if datatype == 'MAT':
-                        # Matrix version
-                        vals = [j for i in mat.transposed() for j in i] # Convert to GM's matrix element order
-                        vals[12:15] = bone.tail[:]                      # Set the translation part to the bone's tail
-                    elif datatype == 'DQ':
-                        # DQ version
-                        dq = pydq.dq_create_matrix_vector(mat, bone.tail)
-                        vals = pydq.dq_to_tuple_smf(dq)
-                    else:
-                        pass
+                    # Use matrix_basis here
+                    mat = bone.matrix_basis.copy()
+                    mat = matrix_to_smf(mat, bone.tail)
                     
-                    byte_data.extend(pack('f' * len(vals), *vals))
+                    par = bone.parent if bone.parent else rig_object.pose.bones[0]
+                    mat_parent = par.matrix_basis.copy()
+                    mat_parent = matrix_to_smf(mat, par.tail)
+                    
+                    # Create DQs and do some DQ math
+                    # poseLocalDQ = dq_multiply(dq_get_conjugate(poseDQ[node[eAnimNode.Parent]]), poseDQ[i]);
+                    dq = pydq.dq_create_matrix(mat)
+                    dq_parent = pydq.dq_create_matrix(mat_parent)
+                    dq_parent_conj = pydq.dq_get_conjugate(dq_parent)
+                    dq = pydq.dq_get_product(dq_parent_conj, dq)
+                    
+                    vals = pydq.dq_to_tuple_smf(dq)
+                    
+                    #vals = [j for i in mat.transposed() for j in i] # Convert to GM's matrix element order
+                    
+                    print(bone.name)
+                    print("SMF matrix: ")
+                    print(mat)
+                    print("DQ value: ")
+                    print(dq)
+                    print("Buffer values written: ")
+                    print(dq_values)
+                    
+                    byte_data.extend(pack('ffffffff', *vals))
             
             # Restore frame position
             context.scene.frame_set(frame_prev)
         
         # Export each NLA track linked to the armature object as an animation
         # (use the first action's name as the animation name for now)
+        print("ANIMATION")
+        print("---------")
         if self.export_nla_tracks:
             # Search for the presence of NLA tracks
             if rig_object.animation_data:
@@ -351,11 +380,9 @@ class ExportSMF(Operator, ExportHelper):
                             frame_indices = range(int(strip.action_frame_start), int(strip.action_frame_end+1))
                             frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
                             animation_bytes.extend(bytearray(strip.name + "\0", 'utf-8'))   # animName
-                            animation_bytes.extend(pack('B', True))                         # animLoop
-                            animation_bytes.extend(pack('f', 1000))                         # play time (ms)
-                            animation_bytes.extend(pack('I', frame_max))                    # animFrameNumber
+                            animation_bytes.extend(pack('B', frame_max))                    # animFrameNumber
                             
-                            write_animation_data(context, animation_bytes, rig_object, frame_indices, self.export_datatype)
+                            write_animation_data(context, animation_bytes, rig_object, frame_indices)
                             
                             track.is_solo = False
                         else:
@@ -376,11 +403,9 @@ class ExportSMF(Operator, ExportHelper):
                 frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
                 frame_max = int(context.scene.frame_end - context.scene.frame_start)
                 animation_bytes.extend(bytearray(anim.name + "\0", 'utf-8'))# animName
-                animation_bytes.extend(pack('B', True))                     # animLoop
-                animation_bytes.extend(pack('f', 1000))                     # play time (ms)
-                animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
+                animation_bytes.extend(pack('B', frame_max))                # animFrameNumber
                 
-                write_animation_data(context, animation_bytes, rig_object, frame_indices, self.export_datatype)
+                write_animation_data(context, animation_bytes, rig_object, frame_indices)
         
         # Write (the absence of) saved selections
         saved_selections_bytes = bytearray()
