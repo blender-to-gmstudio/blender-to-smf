@@ -1,12 +1,9 @@
 # SMF export scripts for Blender
 #
-from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
+#from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
 
-SMF_version = 7
+SMF_version = 10
 SMF_format_size = 44
-SMF_header_size = 79
-
-SMF_header_string = "SnidrsModelFormat\0"
 
 def export():
     pass
