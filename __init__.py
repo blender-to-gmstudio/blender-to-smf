@@ -109,16 +109,21 @@ class ExportSMF(Operator, ExportHelper):
         if self.export_textures:
             # Write textures and their image data (same thing as seen from SMF)
             unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
-            unique_textures = {slot.texture for mat in unique_materials for slot in mat.texture_slots if slot != None}
-            #unique_images = {}
             
-            texture_bytes.extend(pack('B', len(unique_textures)))           # Number of textures
-            for tex in unique_textures:
-                img = tex.image
+            # Get unique images and keep their reference to the material that uses them
+            unique_images = {}
+            #for mat in unique_materials:
+                # Look for the material output node
+            #    unique_images.append(mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image)
+            unique_images = {mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image for mat in unique_materials}
+            print(unique_images)
+            
+            texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
+            for img in unique_images:
                 channels, item_number = img.channels, len(img.pixels)
                 pixel_number = int(item_number/channels)
                 
-                texture_bytes.extend(bytearray(tex.name + "\0",'utf-8'))    # Texture name
+                texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
                 texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
                 
                 bytedata = [floor(component*255) for component in img.pixels[:]]
@@ -128,14 +133,22 @@ class ExportSMF(Operator, ExportHelper):
             material_bytes.extend(pack('B', len(unique_materials)))
             for mat in unique_materials:
                 # Determine SMF material type
+                """
                 if mat.use_shadeless:
                     mat_type = 0
                 else:
                     mat_type = 2                                            # Per-fragment shading
+                 """
+                mat_type = 0
                 
                 # Basic info for all material types
                 material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))  # Material name
                 material_bytes.extend(pack('B',mat_type))                   # Material type
+                
+                # Lookup the connected shader node and get attributes from that
+                # Written to support Blender's Principled BSDF shader as good as possible
+                # This line of code currently assumes that there are connected nodes
+                shader = mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node
                 
                 if mat_type > 0:
                     # Effect modifiers
@@ -201,9 +214,7 @@ class ExportSMF(Operator, ExportHelper):
                 if slot.material:
                     mat = slot.material
                     mat_name = mat.name
-                    #if mat.texture_slots[0] != None:
-                    #    tex = mat.texture_slots[0].texture
-                    #tex_name = tex.name
+                    tex_name = mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image.name
             
             model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
