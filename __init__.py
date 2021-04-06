@@ -10,11 +10,9 @@ bl_info = {
     "category": "Import-Export"}
 
 import bpy
-from struct import pack
+from struct import pack, calcsize
 from mathutils import *
 from math import *
-
-from . import smf
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -252,12 +250,12 @@ class ExportSMF(Operator, ExportHelper):
         
         def write_animation_data(name, scene, byte_data, rig_object, frame_indices, frame_max):
             """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
-            animation_bytes.extend(bytearray(name + "\0", 'utf-8'))# animName
-            animation_bytes.extend('B', True)                           # loop
+            animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
+            animation_bytes.extend(pack('B', True))                     # loop
             animation_bytes.extend(pack('f', 1000))                     # playTime (ms)
             animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
             animation_bytes.extend(pack('B', 4))                        # sampleFrameMultiplier
-            animation_bytes.extend(pack('B', frame_max))                # animFrameNumber
+            animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
             
             # PRE Skeleton must be in Pose Position (see Armature.pose_position)
             frame_prev = scene.frame_current
@@ -277,8 +275,10 @@ class ExportSMF(Operator, ExportHelper):
                     bone = rig_object.pose.bones[rbone.name]
                     
                     # Use matrix_basis here
-                    mat = bone.matrix_basis
+                    mat = bone.matrix
                     vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                    vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                    #print(vals)
                     byte_data.extend(pack('f'*16, *vals))
             
             # Restore frame position
@@ -345,7 +345,7 @@ class ExportSMF(Operator, ExportHelper):
         # Now build header
         header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
         
-        tex_pos = len(header_bytes)
+        tex_pos = len(header_bytes) + calcsize('IIIIII')
         mat_pos = tex_pos + len(texture_bytes)
         mod_pos = mat_pos + len(material_bytes)
         rig_pos = mod_pos + len(model_bytes)
