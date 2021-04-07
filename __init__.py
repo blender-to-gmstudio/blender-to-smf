@@ -112,14 +112,39 @@ class ExportSMF(Operator, ExportHelper):
             
             # Get unique images and keep their reference to the material that uses them
             unique_images = {}
-            #for mat in unique_materials:
-                # Look for the material output node
-            #    unique_images.append(mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image)
-            unique_images = {mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image for mat in unique_materials}
-            print(unique_images)
+            for mat in unique_materials:
+                if not mat.use_nodes:
+                    continue
+                
+                output_node_list = [node for node in mat.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
+                if len(output_node_list) == 0:
+                    continue
+                
+                node = output_node_list[0]
+                if not node.inputs['Surface'].is_linked:
+                    continue
+                
+                node = node.inputs['Surface'].links[0].from_node
+                if node.type == 'TEX_IMAGE':
+                    # Directly connected texture image node
+                    unique_images[mat.name] = node.image
+                else:
+                    # Look a bit further
+                    # Try to generalize a bit by assuming texture input is at index 0
+                    # (color/texture inputs seem to connect to input 0 for all shaders)
+                    if not node.inputs[0].is_linked:
+                        continue
+                    
+                    node = node.inputs[0].links[0].from_node
+                    if node.type == 'TEX_IMAGE':
+                        unique_images[mat.name] = node.image
+                
+            # Old version
+            #unique_images = {mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image for mat in unique_materials}
+            #print(unique_images)
             
             texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
-            for img in unique_images:
+            for img in unique_images.values():
                 channels, item_number = img.channels, len(img.pixels)
                 pixel_number = int(item_number/channels)
                 
@@ -214,7 +239,8 @@ class ExportSMF(Operator, ExportHelper):
                 if slot.material:
                     mat = slot.material
                     mat_name = mat.name
-                    tex_name = mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image.name
+                    if mat_name in unique_images:
+                        tex_name = unique_images[mat_name].name
             
             model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
             model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
@@ -259,21 +285,22 @@ class ExportSMF(Operator, ExportHelper):
         # Write animations
         animation_bytes = bytearray()
         
-        def write_animation_data(name, scene, byte_data, rig_object, frame_indices, frame_max):
+        def write_animation_data(name, scene, byte_data, rig_object, frame_indices, fps):
             """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
+            frame_number = len(frame_indices)
             animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
             animation_bytes.extend(pack('B', True))                     # loop
-            animation_bytes.extend(pack('f', 1000))                     # playTime (ms)
+            animation_bytes.extend(pack('f', frame_number/fps*1000))    # playTime (ms)
             animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
             animation_bytes.extend(pack('B', 4))                        # sampleFrameMultiplier
-            animation_bytes.extend(pack('I', frame_max))                # animFrameNumber
+            animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
             
             # PRE Skeleton must be in Pose Position (see Armature.pose_position)
             frame_prev = scene.frame_current
             for frame in frame_indices:
                 scene.frame_set(frame)
                 
-                kf_time = frame/21 # Yuck! Hard-coded test value!
+                kf_time = frame/frame_number
                 
                 byte_data.extend(pack('f', kf_time))
                 
@@ -281,7 +308,7 @@ class ExportSMF(Operator, ExportHelper):
                 
                 # Loop through the armature's PoseBones using its Bone order (!)
                 # This guarantees a correct mapping of PoseBones to Bones
-                for rbone in rig.bones:
+                for rbone in rig_object.data.bones:
                     # Get the bone (The name is identical (!))
                     bone = rig_object.pose.bones[rbone.name]
                     
@@ -299,6 +326,10 @@ class ExportSMF(Operator, ExportHelper):
         # (use the first action's name as the animation name for now)
         print("ANIMATION")
         print("---------")
+        
+        # Common variables
+        fps = context.scene.render.fps/context.scene.render.fps_base
+        
         if self.export_nla_tracks:
             # Search for the presence of NLA tracks
             if rig_object.animation_data:
@@ -316,7 +347,7 @@ class ExportSMF(Operator, ExportHelper):
                         print("Track ", track.name)
                         strips = track.strips
                         if len(strips) > 0:
-                            # Use the first strip
+                            # Use the first strip (assume only one per track for now)
                             strip = strips[0]
                             
                             print("Strips: ", len(strips))
@@ -329,9 +360,9 @@ class ExportSMF(Operator, ExportHelper):
                             track.is_solo = True
                             
                             # TODO This needs a bit of work
-                            frame_indices = range(int(strip.action_frame_start), int(strip.action_frame_end+1))
+                            frame_indices = range(int(strip.frame_start), int(strip.frame_end+1))
                             frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
-                            write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, frame_max)
+                            write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
                             
                             track.is_solo = False
                         else:
@@ -351,7 +382,7 @@ class ExportSMF(Operator, ExportHelper):
                 
                 frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
                 frame_max = int(context.scene.frame_end - context.scene.frame_start)
-                write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_indices, frame_max)
+                write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
         
         # Now build header
         header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
