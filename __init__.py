@@ -91,14 +91,9 @@ class ExportSMF(Operator, ExportHelper):
         if len(armature_list) > 0:
             rig_object = armature_list[0]
             rig = rig_object.data       # Export the first armature that we find
-            anim = rig_object.animation_data.action
-            
-            unsupported_rig = len([bone for bone in rig.bones if bone.parent != None and bone.use_connect == False]) > 0
-            if unsupported_rig:
-                rig_object = None
-                rig = None
-                anim = None
-                self.report({'WARNING'},"The currently selected rig contains disconnected bones, which are not supported by SMF. Export of armature will be skipped.")
+            if rig_object.animation_data:
+                if rig_object.animation_data.action:
+                    anim = action
             
             if len(armature_list) > 1:
                 self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
@@ -258,7 +253,9 @@ class ExportSMF(Operator, ExportHelper):
             # No (valid) armature for export
             rig_bytes.extend(pack('B',0))
         else:
-            rig_bytes.extend(pack('B',len(rig.bones)))              # nodeNum
+            #node_num = len(rig.bones) + len([b for b in rig.bones if b.parent and not b.use_connect])
+            #print("Node num: ", node_num)
+            rig_bytes.extend(pack('B',len(rig.bones)))                    # nodeNum
             
             if len(rig.bones) == 0:
                 self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
@@ -267,9 +264,18 @@ class ExportSMF(Operator, ExportHelper):
             print("---")
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
+            #i, start = 0, len(rig.bones)
+            #extra_bones = []
             for bone in rig.bones:
-                parent_bone_index = 0 if bone.parent == None else rig.bones.find(bone.parent.name)
-                connected = 0 if bone.parent == None else 1
+                parent_bone_index = 0 if not bone.parent else rig.bones.find(bone.parent.name)
+                connected = bone.use_connect
+                #if bone.parent and not bone.use_connect:
+                #    # Disconnected/ detached bones/nodes
+                #    connected = True
+                #    parent_bone_index = start + i
+                #    i = i + 1
+                #    extra_bones.append(bone)
+                #    print("pbi ", parent_bone_index)
                 
                 # Construct a list containing matrix values in the right order
                 mat = bone.matrix.to_4x4()
@@ -278,9 +284,27 @@ class ExportSMF(Operator, ExportHelper):
                 
                 rig_bytes.extend(pack('f'*16, *vals))
                 rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
-                rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone] # TODO detached bone chains?
+                rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
                 rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                 rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+            
+            #print(extra_bones)
+            #
+            ## Now write the nodes that we need to add for disconnected bones
+            #for bone in extra_bones:
+            #    parent_bone_index = rig.bones.find(bone.parent.name)
+            #    connected = bone.use_connect
+            #    
+            #    # Construct a list containing matrix values in the right order
+            #    mat = bone.matrix.to_4x4()
+            #    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+            #    vals[12:15] = bone.head_local[:]                    # Write the head for these ones (!)
+            #    
+            #    rig_bytes.extend(pack('f'*16, *vals))
+            #    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+            #    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
+            #    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
+            #    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
         
         # Write animations
         animation_bytes = bytearray()
