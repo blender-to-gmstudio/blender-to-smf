@@ -92,7 +92,8 @@ class ExportSMF(Operator, ExportHelper):
             rig_object = armature_list[0]
             rig = rig_object.data       # Export the first armature that we find
             if rig_object.animation_data:
-                if rig_object.animation_data.action:
+                action = rig_object.animation_data.action
+                if action:
                     anim = action
             
             if len(armature_list) > 1:
@@ -218,12 +219,14 @@ class ExportSMF(Operator, ExportHelper):
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
                     indices, weights = [0,0,0,0], [0,0,0,0]
-                    for index,group in enumerate(vert.groups[0:4]):   # 4 bone weights max!
-                        indices[index] = group.group
+                    for index, group in enumerate(vert.groups[0:4]):  # 4 bone weights max!
+                        vg_index = group.group                        # Index of the vertex group
+                        vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
+                        indices[index] = rig.bones.find(vg_name)      # Find the bone with the vg name
+                        #print(vg_index, vg_name, indices[index])
                         w = group.weight*255
                         weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
                     model_bytes.extend(pack('BBBB', *indices))        # Bone indices
-                    #print(weights)
                     model_bytes.extend(pack('BBBB', *weights))        # Bone weights
             
             # Mat and tex name
@@ -255,7 +258,7 @@ class ExportSMF(Operator, ExportHelper):
         else:
             #node_num = len(rig.bones) + len([b for b in rig.bones if b.parent and not b.use_connect])
             #print("Node num: ", node_num)
-            rig_bytes.extend(pack('B',len(rig.bones)))                    # nodeNum
+            rig_bytes.extend(pack('B',len(rig.bones)))              # nodeNum
             
             if len(rig.bones) == 0:
                 self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
