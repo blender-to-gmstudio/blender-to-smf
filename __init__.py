@@ -192,63 +192,6 @@ class ExportSMF(Operator, ExportHelper):
             material_bytes.extend(pack('B', 0))                             # No materials
             texture_bytes.extend(pack('B', 0))                              # No textures
         
-        # Write models
-        # TODO Apply modifiers, location, rotation and scale, etc.
-        model_bytes = bytearray()
-        no_models = len(model_list)
-        model_bytes.extend(pack('B', no_models))
-        for obj in model_list:
-            mesh = obj.data.copy()
-            ExportSMF.prepare_mesh(mesh)
-            
-            number_of_verts = 3 * len(mesh.polygons)
-            size = number_of_verts * SMF_vertex_format_size
-            
-            model_bytes.extend(pack('I', size))
-            # Write vertex buffer contents
-            uv_data = mesh.uv_layers.active.data
-            for face in mesh.polygons:
-                for loop in [mesh.loops[i] for i in face.loop_indices]:
-                    vert = mesh.vertices[loop.vertex_index]
-                    model_bytes.extend(pack('fff', *(vert.co[:])))
-                    normal_source = vert                              # One of vert, loop, face
-                    normal = normal_source.normal
-                    model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
-                    uv = uv_data[loop.index].uv
-                    model_bytes.extend(pack('ff', *(uv[:])))          # uv
-                    tan_int = [int(c*255) for c in loop.tangent]
-                    model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
-                    indices, weights = [0,0,0,0], [0,0,0,0]
-                    for index, group in enumerate(vert.groups[0:4]):  # 4 bone weights max!
-                        vg_index = group.group                        # Index of the vertex group
-                        vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
-                        indices[index] = rig.bones.find(vg_name)      # Find the bone with the vg name
-                        #print(vg_index, vg_name, indices[index])
-                        w = group.weight*255
-                        weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
-                    model_bytes.extend(pack('BBBB', *indices))        # Bone indices
-                    model_bytes.extend(pack('BBBB', *weights))        # Bone weights
-            
-            # Mat and tex name
-            mat_name = ""
-            tex_name = ""
-            if len(obj.material_slots) > 0:
-                slot = obj.material_slots[0]
-                if slot.material:
-                    mat = slot.material
-                    mat_name = mat.name
-                    if mat_name in unique_images:
-                        tex_name = unique_images[mat_name].name
-            
-            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
-            model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
-            
-            # Visible
-            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
-            
-            # Delete triangulated copy of the mesh
-            bpy.data.meshes.remove(mesh)
-        
         # Write rig
         rig_bytes = bytearray()
         
@@ -309,6 +252,90 @@ class ExportSMF(Operator, ExportHelper):
             #    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
             #    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
         
+        # Create the bindmap (i.e. which bones get sent to the shader)
+        # See smf_rig.update_bindmap (we only need the bindmap part here!)
+        # Only consider Blender bones that map to SMF bones
+        # Every SMF node that has a parent and is attached to it, represents a bone
+        # SMF node indices map 1 to 1 to Blender bone indices
+        smf_bones = [b for b in rig.bones if b.parent and b.use_connect]
+        bindmap = {}
+        node_num = len(rig.bones)
+        sample_bone_ind = 0
+        for node in rig.bones:
+            if not node.parent or not node.use_connect:
+                continue
+            else:
+                bindmap[node.name] = sample_bone_ind
+                sample_bone_ind = sample_bone_ind + 1
+        
+        bone_num = sample_bone_ind
+        #bindmap = bindmap[:bone_num]
+        print(bindmap)
+        
+        # Write models
+        # TODO Apply modifiers, location, rotation and scale, etc.
+        model_bytes = bytearray()
+        no_models = len(model_list)
+        model_bytes.extend(pack('B', no_models))
+        for obj in model_list:
+            mesh = obj.data.copy()
+            ExportSMF.prepare_mesh(mesh)
+            
+            number_of_verts = 3 * len(mesh.polygons)
+            size = number_of_verts * SMF_vertex_format_size
+            
+            model_bytes.extend(pack('I', size))
+            # Write vertex buffer contents
+            uv_data = mesh.uv_layers.active.data
+            for face in mesh.polygons:
+                for loop in [mesh.loops[i] for i in face.loop_indices]:
+                    vert = mesh.vertices[loop.vertex_index]
+                    model_bytes.extend(pack('fff', *(vert.co[:])))
+                    normal_source = vert                              # One of vert, loop, face
+                    normal = normal_source.normal
+                    model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
+                    uv = uv_data[loop.index].uv
+                    model_bytes.extend(pack('ff', *(uv[:])))          # uv
+                    tan_int = [int(c*255) for c in loop.tangent]
+                    model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
+                    indices, weights = [0,0,0,0], [1,0,0,0]
+                    mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bindmap.keys()]
+                    groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
+                    print([g.weight for g in groups])
+                    for index, group in enumerate(groups):            # 4 bone weights max!
+                        vg_index = group.group                        # Index of the vertex group
+                        vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
+                        
+                        #indices[index] = rig.bones.find(vg_name)      # Find the bone with the vg name
+                        #indices[index] = bindmap[indices[index]]
+                        
+                        indices[index] = bindmap[vg_name]
+                        print(vg_index, vg_name, indices[index])
+                        w = group.weight*255
+                        weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+                    model_bytes.extend(pack('BBBB', *indices))        # Bone indices
+                    model_bytes.extend(pack('BBBB', *weights))        # Bone weights
+            
+            # Mat and tex name
+            mat_name = ""
+            tex_name = ""
+            if len(obj.material_slots) > 0:
+                slot = obj.material_slots[0]
+                if slot.material:
+                    mat = slot.material
+                    mat_name = mat.name
+                    if mat_name in unique_images:
+                        tex_name = unique_images[mat_name].name
+            
+            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
+            model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
+            
+            # Visible
+            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
+            
+            # Delete triangulated copy of the mesh
+            bpy.data.meshes.remove(mesh)
+        
         # Write animations
         animation_bytes = bytearray()
         
@@ -348,6 +375,9 @@ class ExportSMF(Operator, ExportHelper):
             
             # Restore frame position
             scene.frame_set(frame_prev)
+        
+        # Print the bindmap right here!
+        print(bindmap)
         
         # Export each NLA track linked to the armature object as an animation
         # (use the first action's name as the animation name for now)
