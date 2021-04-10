@@ -304,16 +304,18 @@ class ExportSMF(Operator, ExportHelper):
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
                     indices, weights = [0,0,0,0], [1,0,0,0]
                     # TODO This part needs to be taken out of this loop, it's awfully slow
+                    # (pre-calculate this!)
                     mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bindmap.keys()]
                     groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
-                    print("VI", loop.vertex_index)
-                    print([(g.group, g.weight) for g in groups])
+                    #print("VI", loop.vertex_index)
+                    s = sum([g.weight for g in groups])
+                    #print("Sum: ", s)
+                    #print([(g.group, g.weight) for g in groups])
                     for index, group in enumerate(groups):            # 4 bone weights max!
                         vg_index = group.group                        # Index of the vertex group
                         vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
                         indices[index] = bindmap[vg_name]
-                        #print(vg_index, vg_name, indices[index])
-                        w = group.weight*255
+                        w = group.weight/s*255
                         weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
                     model_bytes.extend(pack('BBBB', *indices))        # Bone indices
                     model_bytes.extend(pack('BBBB', *weights))        # Bone weights
