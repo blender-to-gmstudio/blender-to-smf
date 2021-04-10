@@ -273,6 +273,7 @@ class ExportSMF(Operator, ExportHelper):
                 sample_bone_ind = sample_bone_ind + 1
         
         bone_num = sample_bone_ind
+        bone_names = bindmap.keys()
         #bindmap = bindmap[:bone_num]
         print(bindmap)
         
@@ -305,7 +306,7 @@ class ExportSMF(Operator, ExportHelper):
                     indices, weights = [0,0,0,0], [1,0,0,0]
                     # TODO This part needs to be taken out of this loop, it's awfully slow
                     # (pre-calculate this!)
-                    mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bindmap.keys()]
+                    mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bone_names]
                     groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
                     #print("VI", loop.vertex_index)
                     s = sum([g.weight for g in groups])
