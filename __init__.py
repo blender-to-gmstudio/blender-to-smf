@@ -420,6 +420,7 @@ class ExportSMF(Operator, ExportHelper):
                             # Make sure to reset the frame in advance so the rig gets reset properly
                             context.scene.frame_set(context.scene.frame_start)
                             
+                            is_solo_prev = track.is_solo
                             track.is_solo = True
                             
                             # TODO This needs a bit of work
@@ -427,7 +428,7 @@ class ExportSMF(Operator, ExportHelper):
                             frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
                             write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
                             
-                            track.is_solo = False
+                            track.is_solo = is_solo_prev
                         else:
                             # A bit of an issue here...
                             print("We're not supposed to be here...")
