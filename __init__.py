@@ -224,9 +224,13 @@ class ExportSMF(Operator, ExportHelper):
                 #    print("pbi ", parent_bone_index)
                 
                 # Construct a list containing matrix values in the right order
-                mat = bone.matrix.to_4x4()
+                #mat = bone.matrix.to_4x4()
+                mat = bone.matrix_local
                 vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                 vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
+                
+                print(bone.name)
+                print(vals)
                 
                 rig_bytes.extend(pack('f'*16, *vals))
                 rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
@@ -252,7 +256,7 @@ class ExportSMF(Operator, ExportHelper):
             #    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
             #    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
         
-        # Create the bindmap (i.e. which bones get sent to the shader)
+        # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
         # Only consider Blender bones that map to SMF bones
         # Every SMF node that has a parent and is attached to it, represents a bone
@@ -299,18 +303,16 @@ class ExportSMF(Operator, ExportHelper):
                     tan_int = [int(c*255) for c in loop.tangent]
                     model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
                     indices, weights = [0,0,0,0], [1,0,0,0]
+                    # TODO This part needs to be taken out of this loop, it's awfully slow
                     mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bindmap.keys()]
                     groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
-                    print([g.weight for g in groups])
+                    print("VI", loop.vertex_index)
+                    print([(g.group, g.weight) for g in groups])
                     for index, group in enumerate(groups):            # 4 bone weights max!
                         vg_index = group.group                        # Index of the vertex group
                         vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
-                        
-                        #indices[index] = rig.bones.find(vg_name)      # Find the bone with the vg name
-                        #indices[index] = bindmap[indices[index]]
-                        
                         indices[index] = bindmap[vg_name]
-                        print(vg_index, vg_name, indices[index])
+                        #print(vg_index, vg_name, indices[index])
                         w = group.weight*255
                         weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
                     model_bytes.extend(pack('BBBB', *indices))        # Bone indices
@@ -366,10 +368,11 @@ class ExportSMF(Operator, ExportHelper):
                     # Get the bone (The name is identical (!))
                     bone = rig_object.pose.bones[rbone.name]
                     
-                    # Use matrix_basis here
+                    # Use matrix
                     mat = bone.matrix
                     vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                     vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                    
                     #print(vals)
                     byte_data.extend(pack('f'*16, *vals))
             
