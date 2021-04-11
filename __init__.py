@@ -189,7 +189,7 @@ class ExportSMF(Operator, ExportHelper):
             texture_bytes.extend(pack('B', 0))                              # No textures
         
         # Construct node list for SMF
-        # (disconnected bone heads need to become nodes, too)
+        # (heads of disconnected bones need to become nodes, too)
         bones = [bone for bone in rig.bones]
         bones_orig = bones.copy()
         for bone in bones_orig:
@@ -197,6 +197,7 @@ class ExportSMF(Operator, ExportHelper):
                 pos = bones.index(bone)
                 bones.insert(pos, None)
         
+        bones_orig = bones.copy()
         print(bones)
         
         # Write rig
@@ -206,7 +207,7 @@ class ExportSMF(Operator, ExportHelper):
             # No (valid) armature for export
             rig_bytes.extend(pack('B',0))
         else:
-            rig_bytes.extend(pack('B',len(rig.bones)))              # nodeNum
+            rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
             
             if len(rig.bones) == 0:
                 self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
@@ -215,37 +216,70 @@ class ExportSMF(Operator, ExportHelper):
             print("---")
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
-            #i, start = 0, len(rig.bones)
-            #extra_bones = []
-            for bone in rig.bones:
-                parent_bone_index = 0 if not bone.parent else rig.bones.find(bone.parent.name)
-                connected = bone.use_connect
-                
-                # Construct a list containing matrix values in the right order
-                mat = bone.matrix_local
-                vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
-                
-                print(bone.name)
-                print(vals)
-                
-                rig_bytes.extend(pack('f'*16, *vals))
-                rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
-                rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
-                rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
-                rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
-        
+            debug_bones = []
+            for bone in bones:
+                if bone:
+                    # This bone exists in the Blender rig
+                    parent_bone_index = 0 if not bone.parent else bones.index(bone.parent)
+                    connected = bone.use_connect
+                    
+                    if bone.parent and not bone.use_connect:
+                        # This is a node for which an added node has been written
+                        parent_bone_index = bones.index(bone)-1
+                        connected = True
+                        bones[parent_bone_index] = bone
+                    
+                    # Construct a list containing matrix values in the right order
+                    mat = bone.matrix_local
+                    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                    vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
+                    
+                    #print(bone.name)
+                    #print(vals)
+                    
+                    rig_bytes.extend(pack('f'*16, *vals))
+                    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+                    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
+                    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
+                    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+                    
+                    debug_bones.append((bone.name, parent_bone_index, connected))
+                else:
+                    # This is one of the added nodes
+                    pos = bones.index(bone)
+                    b = bones[pos+1]
+                    
+                    parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+                    connected = b.use_connect
+                    
+                    # Construct a list containing matrix values in the right order
+                    mat = b.matrix_local
+                    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                    vals[12:15] = b.head_local[:]                       # Write the head here (!)
+                    
+                    rig_bytes.extend(pack('f'*16, *vals))
+                    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+                    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
+                    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
+                    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+                    
+                    debug_bones.append((b.name, parent_bone_index, connected))
+            
+            print("Resulting node list:")
+            for b in debug_bones:
+                print(b)
+            
         # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
         # Only consider Blender bones that map to SMF bones
         # Every SMF node that has a parent and is attached to it, represents a bone
         # SMF node indices map 1 to 1 to Blender bone indices
-        smf_bones = [b for b in rig.bones if b.parent and b.use_connect]
+        smf_bones = [b for b in bones_orig if b]
         bindmap = {}
-        node_num = len(rig.bones)
         sample_bone_ind = 0
-        for node in rig.bones:
-            if not node.parent or not node.use_connect:
+        for node in smf_bones:
+            if not node.parent:
+                # Root node
                 continue
             else:
                 bindmap[node.name] = sample_bone_ind
