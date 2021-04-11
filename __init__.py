@@ -134,10 +134,6 @@ class ExportSMF(Operator, ExportHelper):
                     node = node.inputs[0].links[0].from_node
                     if node.type == 'TEX_IMAGE':
                         unique_images[mat.name] = node.image
-                
-            # Old version
-            #unique_images = {mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node.inputs[0].links[0].from_socket.node.image for mat in unique_materials}
-            #print(unique_images)
             
             texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
             for img in unique_images.values():
@@ -192,6 +188,17 @@ class ExportSMF(Operator, ExportHelper):
             material_bytes.extend(pack('B', 0))                             # No materials
             texture_bytes.extend(pack('B', 0))                              # No textures
         
+        # Construct node list for SMF
+        # (disconnected bone heads need to become nodes, too)
+        bones = [bone for bone in rig.bones]
+        bones_orig = bones.copy()
+        for bone in bones_orig:
+            if bone.parent and not bone.use_connect:
+                pos = bones.index(bone)
+                bones.insert(pos, None)
+        
+        print(bones)
+        
         # Write rig
         rig_bytes = bytearray()
         
@@ -199,8 +206,6 @@ class ExportSMF(Operator, ExportHelper):
             # No (valid) armature for export
             rig_bytes.extend(pack('B',0))
         else:
-            #node_num = len(rig.bones) + len([b for b in rig.bones if b.parent and not b.use_connect])
-            #print("Node num: ", node_num)
             rig_bytes.extend(pack('B',len(rig.bones)))              # nodeNum
             
             if len(rig.bones) == 0:
