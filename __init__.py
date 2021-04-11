@@ -215,16 +215,8 @@ class ExportSMF(Operator, ExportHelper):
             for bone in rig.bones:
                 parent_bone_index = 0 if not bone.parent else rig.bones.find(bone.parent.name)
                 connected = bone.use_connect
-                #if bone.parent and not bone.use_connect:
-                #    # Disconnected/ detached bones/nodes
-                #    connected = True
-                #    parent_bone_index = start + i
-                #    i = i + 1
-                #    extra_bones.append(bone)
-                #    print("pbi ", parent_bone_index)
                 
                 # Construct a list containing matrix values in the right order
-                #mat = bone.matrix.to_4x4()
                 mat = bone.matrix_local
                 vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                 vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
@@ -237,24 +229,6 @@ class ExportSMF(Operator, ExportHelper):
                 rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
                 rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                 rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
-            
-            #print(extra_bones)
-            #
-            ## Now write the nodes that we need to add for disconnected bones
-            #for bone in extra_bones:
-            #    parent_bone_index = rig.bones.find(bone.parent.name)
-            #    connected = bone.use_connect
-            #    
-            #    # Construct a list containing matrix values in the right order
-            #    mat = bone.matrix.to_4x4()
-            #    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-            #    vals[12:15] = bone.head_local[:]                    # Write the head for these ones (!)
-            #    
-            #    rig_bytes.extend(pack('f'*16, *vals))
-            #    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
-            #    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
-            #    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
-            #    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
         
         # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
