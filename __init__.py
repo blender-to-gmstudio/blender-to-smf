@@ -274,7 +274,7 @@ class ExportSMF(Operator, ExportHelper):
         # Only consider Blender bones that map to SMF bones
         # Every SMF node that has a parent and is attached to it, represents a bone
         # SMF node indices map 1 to 1 to Blender bone indices
-        smf_bones = [b for b in bones_orig if b]
+        smf_bones = [b for b in bones_orig if b and b.parent]
         bindmap = {}
         sample_bone_ind = 0
         for node in smf_bones:
@@ -289,6 +289,7 @@ class ExportSMF(Operator, ExportHelper):
         bone_names = bindmap.keys()
         #bindmap = bindmap[:bone_num]
         print(bindmap)
+        print(bone_names)
         
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
