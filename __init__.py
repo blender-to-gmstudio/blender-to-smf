@@ -217,7 +217,7 @@ class ExportSMF(Operator, ExportHelper):
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
             debug_bones = []
-            for bone in bones:
+            for n, bone in enumerate(bones):
                 if bone:
                     # This bone exists in the Blender rig
                     parent_bone_index = 0 if not bone.parent else bones.index(bone.parent)
@@ -227,7 +227,7 @@ class ExportSMF(Operator, ExportHelper):
                         # This is a node for which an added node has been written
                         parent_bone_index = bones.index(bone)-1
                         connected = True
-                        bones[parent_bone_index] = bone
+                        bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
                     
                     # Construct a list containing matrix values in the right order
                     mat = bone.matrix_local
@@ -246,7 +246,7 @@ class ExportSMF(Operator, ExportHelper):
                     debug_bones.append((bone.name, parent_bone_index, connected))
                 else:
                     # This is one of the added nodes
-                    pos = bones.index(bone)
+                    pos = n
                     b = bones[pos+1]
                     
                     parent_bone_index = 0 if not b.parent else bones.index(b.parent)
@@ -381,17 +381,27 @@ class ExportSMF(Operator, ExportHelper):
                 
                 # Loop through the armature's PoseBones using its Bone order (!)
                 # This guarantees a correct mapping of PoseBones to Bones
-                for rbone in rig_object.data.bones:
+                #for rbone in rig_object.data.bones:
+                for rbone in bones:
+                    if rbone:
                     # Get the bone (The name is identical (!))
-                    bone = rig_object.pose.bones[rbone.name]
-                    
-                    # Use matrix
-                    mat = bone.matrix
-                    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                    vals[12:15] = bone.tail[:]                          # Write the tail as translation
-                    
-                    #print(vals)
-                    byte_data.extend(pack('f'*16, *vals))
+                        bone = rig_object.pose.bones[rbone.name]
+                        
+                        # Use bone matrix
+                        mat = bone.matrix
+                        vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                        vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                        
+                        #print(vals)
+                        byte_data.extend(pack('f'*16, *vals))
+                    else:
+                        # Use an identity matrix
+                        mat = Matrix()
+                        vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                        vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                        
+                        #print(vals)
+                        byte_data.extend(pack('f'*16, *vals))
             
             # Restore frame position
             scene.frame_set(frame_prev)
