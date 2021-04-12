@@ -197,8 +197,7 @@ class ExportSMF(Operator, ExportHelper):
                 pos = bones.index(bone)
                 bones.insert(pos, None)
         
-        bones_orig = bones.copy()
-        print(bones)
+        #print(bones)
         
         # Write rig
         rig_bytes = bytearray()
@@ -216,7 +215,6 @@ class ExportSMF(Operator, ExportHelper):
             print("---")
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
-            debug_bones = []
             for n, bone in enumerate(bones):
                 if bone:
                     # This bone exists in the Blender rig
@@ -233,17 +231,6 @@ class ExportSMF(Operator, ExportHelper):
                     mat = bone.matrix_local
                     vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                     vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
-                    
-                    #print(bone.name)
-                    #print(vals)
-                    
-                    rig_bytes.extend(pack('f'*16, *vals))
-                    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
-                    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
-                    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
-                    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
-                    
-                    debug_bones.append((bone.name, bone.tail_local[:], parent_bone_index, connected))
                 else:
                     # This is one of the inserted nodes
                     pos = n
@@ -257,39 +244,31 @@ class ExportSMF(Operator, ExportHelper):
                     vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                     vals[12:15] = b.head_local[:]                       # Write the head here (!)
                     
-                    rig_bytes.extend(pack('f'*16, *vals))
-                    rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
-                    rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
-                    rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
-                    rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
-                    
-                    debug_bones.append((b.name, b.head_local[:], parent_bone_index, connected))
-            
-            print("Resulting node list:")
-            for b in debug_bones:
-                print(b)
+                rig_bytes.extend(pack('f'*16, *vals))
+                rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+                rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
+                rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
+                rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
             
         # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
         # Only consider Blender bones that map to SMF bones
         # Every SMF node that has a parent and is attached to it, represents a bone
         # (the detached nodes represent the heads of bones)
-        smf_bones = [b for b in bones_orig if b and b.parent and b.use_connect]
+        smf_bones = [b for b in bones if b and b.parent]
+        print(len(smf_bones))
         bindmap = {}
         sample_bone_ind = 0
         for node in smf_bones:
-            if not node.parent:
-                # Root node
-                continue
-            else:
-                bindmap[node.name] = sample_bone_ind
-                sample_bone_ind = sample_bone_ind + 1
+            bindmap[node.name] = sample_bone_ind
+            sample_bone_ind = sample_bone_ind + 1
         
         bone_num = sample_bone_ind
         bone_names = bindmap.keys()
         #bindmap = bindmap[:bone_num]
-        print(bindmap)
-        print(bone_names)
+        #print(bindmap)
+        #print(bone_num)
+        #print(bone_names)
         
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
@@ -322,10 +301,7 @@ class ExportSMF(Operator, ExportHelper):
                     # (pre-calculate this!)
                     mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bone_names]
                     groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
-                    #print("VI", loop.vertex_index)
                     s = sum([g.weight for g in groups])
-                    #print("Sum: ", s)
-                    #print([(g.group, g.weight) for g in groups])
                     for index, group in enumerate(groups):            # 4 bone weights max!
                         vg_index = group.group                        # Index of the vertex group
                         vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
