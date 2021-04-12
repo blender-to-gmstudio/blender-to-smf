@@ -227,10 +227,8 @@ class ExportSMF(Operator, ExportHelper):
                         connected = True
                         bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
                     
-                    # Construct a list containing matrix values in the right order
                     mat = bone.matrix_local
-                    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                    vals[12:15] = bone.tail_local[:]                    # Write the tail as translation
+                    translation = bone.tail_local
                 else:
                     # This is one of the inserted nodes
                     pos = n
@@ -239,11 +237,13 @@ class ExportSMF(Operator, ExportHelper):
                     parent_bone_index = 0 if not b.parent else bones.index(b.parent)
                     connected = b.use_connect
                     
-                    # Construct a list containing matrix values in the right order
                     mat = b.matrix_local
-                    vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                    vals[12:15] = b.head_local[:]                       # Write the head here (!)
+                    translation = b.head_local
                     
+                # Construct a list containing matrix values in the right order
+                vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
+                vals[12:15] = translation[:]
+                
                 rig_bytes.extend(pack('f'*16, *vals))
                 rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
                 rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
