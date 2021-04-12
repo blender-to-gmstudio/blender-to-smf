@@ -255,7 +255,6 @@ class ExportSMF(Operator, ExportHelper):
         # Every SMF node that has a parent and is attached to it, represents a bone
         # (the detached nodes represent the heads of bones)
         smf_bones = [b for b in bones if b and b.parent]
-        print(len(smf_bones))
         bindmap = {}
         sample_bone_ind = 0
         for node in smf_bones:
@@ -264,10 +263,6 @@ class ExportSMF(Operator, ExportHelper):
         
         bone_num = sample_bone_ind
         bone_names = bindmap.keys()
-        #bindmap = bindmap[:bone_num]
-        #print(bindmap)
-        #print(bone_num)
-        #print(bone_names)
         
         # Write models
         # TODO Apply modifiers, location, rotation and scale, etc.
@@ -280,6 +275,25 @@ class ExportSMF(Operator, ExportHelper):
             
             number_of_verts = 3 * len(mesh.polygons)
             size = number_of_verts * SMF_vertex_format_size
+            
+            """
+            # Optimize a bit by pre-calculating skinning info
+            skin_indices = [[0, 0, 0, 0]] * len(mesh.vertices)
+            skin_weights = [[1, 0, 0, 0]] * len(mesh.vertices)
+            for v in mesh.vertices:
+                mod_groups = [group for group in v.groups if obj.vertex_groups[group.group].name in bone_names]
+                groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
+                s = sum([g.weight for g in groups])
+                indices = skin_indices[v.index]
+                weights = skin_weights[v.index]
+                for index, group in enumerate(groups):            # 4 bone weights max!
+                    vg_index = group.group                        # Index of the vertex group
+                    vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
+                    w = group.weight/s*255
+                    indices[index] = bindmap[vg_name]
+                    weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+                
+                print(v.index, indices[:], weights[:])"""
             
             model_bytes.extend(pack('I', size))
             # Write vertex buffer contents
@@ -354,29 +368,25 @@ class ExportSMF(Operator, ExportHelper):
                 
                 print("Frame ", frame, " at time ", kf_time)
                 
-                # Loop through the armature's PoseBones using its Bone order (!)
+                # Loop through the armature's PoseBones using the bone/node order we got earlier
                 # This guarantees a correct mapping of PoseBones to Bones
                 #for rbone in rig_object.data.bones:
                 for rbone in bones:
                     if rbone:
-                    # Get the bone (The name is identical (!))
+                        # Get the bone (The name is identical (!))
                         bone = rig_object.pose.bones[rbone.name]
                         
                         # Use bone matrix
                         mat = bone.matrix
                         vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                         vals[12:15] = bone.tail[:]                          # Write the tail as translation
-                        
-                        #print(vals)
-                        byte_data.extend(pack('f'*16, *vals))
                     else:
                         # Use an identity matrix
                         mat = Matrix()
                         vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                         vals[12:15] = bone.tail[:]                          # Write the tail as translation
-                        
-                        #print(vals)
-                        byte_data.extend(pack('f'*16, *vals))
+                    
+                    byte_data.extend(pack('f'*16, *vals))
             
             # Restore frame position
             scene.frame_set(frame_prev)
