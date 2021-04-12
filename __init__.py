@@ -223,7 +223,7 @@ class ExportSMF(Operator, ExportHelper):
                     
                     if bone.parent and not bone.use_connect:
                         # This is a node for which an added node has been written
-                        parent_bone_index = bones.index(bone)-1
+                        parent_bone_index = n-1
                         connected = True
                         bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
                     
@@ -231,15 +231,14 @@ class ExportSMF(Operator, ExportHelper):
                     translation = bone.tail_local
                 else:
                     # This is one of the inserted nodes
-                    pos = n
-                    b = bones[pos+1]
+                    b = bones[n+1]
                     
                     parent_bone_index = 0 if not b.parent else bones.index(b.parent)
                     connected = b.use_connect
                     
                     mat = b.matrix_local
                     translation = b.head_local
-                    
+                
                 # Construct a list containing matrix values in the right order
                 vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                 vals[12:15] = translation[:]
