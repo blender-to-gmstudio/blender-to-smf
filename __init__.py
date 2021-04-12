@@ -243,9 +243,9 @@ class ExportSMF(Operator, ExportHelper):
                     rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                     rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
                     
-                    debug_bones.append((bone.name, parent_bone_index, connected))
+                    debug_bones.append((bone.name, bone.tail_local[:], parent_bone_index, connected))
                 else:
-                    # This is one of the added nodes
+                    # This is one of the inserted nodes
                     pos = n
                     b = bones[pos+1]
                     
@@ -263,7 +263,7 @@ class ExportSMF(Operator, ExportHelper):
                     rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                     rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
                     
-                    debug_bones.append((b.name, parent_bone_index, connected))
+                    debug_bones.append((b.name, b.head_local[:], parent_bone_index, connected))
             
             print("Resulting node list:")
             for b in debug_bones:
@@ -273,8 +273,8 @@ class ExportSMF(Operator, ExportHelper):
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
         # Only consider Blender bones that map to SMF bones
         # Every SMF node that has a parent and is attached to it, represents a bone
-        # SMF node indices map 1 to 1 to Blender bone indices
-        smf_bones = [b for b in bones_orig if b and b.parent]
+        # (the detached nodes represent the heads of bones)
+        smf_bones = [b for b in bones_orig if b and b.parent and b.use_connect]
         bindmap = {}
         sample_bone_ind = 0
         for node in smf_bones:
