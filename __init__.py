@@ -190,14 +190,14 @@ class ExportSMF(Operator, ExportHelper):
         
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
+        print("SMF Node List")
+        print("-------------")
         bones = [bone for bone in rig.bones]
         bones_orig = bones.copy()
         for bone in bones_orig:
             if bone.parent and not bone.use_connect:
                 pos = bones.index(bone)
                 bones.insert(pos, None)
-        
-        #print(bones)
         
         # Write rig
         rig_bytes = bytearray()
@@ -213,6 +213,7 @@ class ExportSMF(Operator, ExportHelper):
             
             print("RIG")
             print("---")
+            debug_rig = []
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
             for n, bone in enumerate(bones):
@@ -221,11 +222,13 @@ class ExportSMF(Operator, ExportHelper):
                     parent_bone_index = 0 if not bone.parent else bones.index(bone.parent)
                     connected = bone.use_connect
                     
+                    name = bone.name
+                    
                     if bone.parent and not bone.use_connect:
                         # This is a node for which an added node has been written
                         parent_bone_index = n-1
                         connected = True
-                        bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
+                        bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
                     
                     mat = bone.matrix_local
                     translation = bone.tail_local
@@ -238,6 +241,8 @@ class ExportSMF(Operator, ExportHelper):
                     
                     mat = b.matrix_local
                     translation = b.head_local
+                    
+                    name = "Inserted for " + b.name
                 
                 # Construct a list containing matrix values in the right order
                 vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
@@ -248,7 +253,15 @@ class ExportSMF(Operator, ExportHelper):
                 rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
                 rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                 rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+                
+                t = translation[:]
+                debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
             
+            # Print some extended, readable debug info
+            for d in debug_rig:
+                s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<32} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
+                print(s)
+        
         # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
         # Only consider Blender bones that map to SMF bones
