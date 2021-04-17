@@ -21,6 +21,10 @@ from bpy_extras.io_utils import ExportHelper, axis_conversion
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 
+# TODO
+#class ImportSMF(Operator, ImportHelper):
+#    pass
+
 class ExportSMF(Operator, ExportHelper):
     """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
     bl_idname = "export_scene.smf"
