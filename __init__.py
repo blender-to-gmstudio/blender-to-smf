@@ -83,6 +83,8 @@ class ExportSMF(Operator, ExportHelper):
         model_list = [o for o in object_list if o.type=='MESH']
         armature_list = [o for o in object_list if o.type=='ARMATURE']
         
+        unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
+        
         # Check if we can export a valid rig
         # (supported are one or more connected hierarchies each with a single root bone in a single armature)
         rig_object = None
@@ -100,14 +102,11 @@ class ExportSMF(Operator, ExportHelper):
                 self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
         
         texture_bytes = bytearray()
-        material_bytes = bytearray()
         
+        # Write textures and their image data (same thing as seen from SMF)
+        # Get unique images and keep their reference to the material that uses them
+        unique_images = {}
         if self.export_textures:
-            # Write textures and their image data (same thing as seen from SMF)
-            unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
-            
-            # Get unique images and keep their reference to the material that uses them
-            unique_images = {}
             for mat in unique_materials:
                 if not mat.use_nodes:
                     continue
@@ -143,50 +142,16 @@ class ExportSMF(Operator, ExportHelper):
                 texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
                 texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
                 
+                print(img.name, img.size[:])
+                
                 bytedata = [floor(component*255) for component in img.pixels[:]]
                 texture_bytes.extend(pack('B'*item_number,*bytedata))
-            
-            # Write materials
-            material_bytes.extend(pack('B', len(unique_materials)))
-            for mat in unique_materials:
-                # Determine SMF material type
-                """
-                if mat.use_shadeless:
-                    mat_type = 0
-                else:
-                    mat_type = 2                                            # Per-fragment shading
-                 """
-                mat_type = 0
-                
-                # Basic info for all material types
-                material_bytes.extend(bytearray(mat.name + "\0", 'utf-8'))  # Material name
-                material_bytes.extend(pack('B',mat_type))                   # Material type
-                
-                # Lookup the connected shader node and get attributes from that
-                # Written to support Blender's Principled BSDF shader as good as possible
-                # This line of code currently assumes that there are connected nodes
-                shader = mat.node_tree.nodes['Material Output'].inputs['Surface'].links[0].from_node
-                
-                if mat_type > 0:
-                    # Effect modifiers
-                    spec_int = int(mat.specular_intensity*127)
-                    material_bytes.extend(pack('B',spec_int))               # SpecReflectance
-                    material_bytes.extend(pack('B',mat.specular_hardness))  # SpecDamping
-                    material_bytes.extend(pack('B',1))                      # CelSteps
-                    material_bytes.extend(pack('B',0))                      # RimPower
-                    material_bytes.extend(pack('B',0))                      # RimFactor
-                    
-                    # Normal map
-                    material_bytes.extend(pack('B',0))                      # Not enabled right now
-                    
-                    # Outlines
-                    material_bytes.extend(pack('B',0))                      # Not enabled right now
-                    
-                    # Reflection
-                    material_bytes.extend(pack('B',0))                      # Not enabled right now
         else:
-            material_bytes.extend(pack('B', 0))                             # No materials
-            texture_bytes.extend(pack('B', 0))                              # No textures
+            texture_bytes.extend(pack('B', len(unique_images)))
+        
+        # Write an empty chunk for materials
+        material_bytes = bytearray()
+        material_bytes.extend(pack('B', len(unique_materials)))
         
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
@@ -219,19 +184,21 @@ class ExportSMF(Operator, ExportHelper):
             for n, bone in enumerate(bones):
                 if bone:
                     # This bone exists in the Blender rig
-                    parent_bone_index = 0 if not bone.parent else bones.index(bone.parent)
-                    connected = bone.use_connect
+                    b = bone
                     
-                    name = bone.name
+                    parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+                    connected = b.use_connect
                     
-                    if bone.parent and not bone.use_connect:
+                    if b.parent and not b.use_connect:
                         # This is a node for which an added node has been written
                         parent_bone_index = n-1
                         connected = True
                         bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
                     
-                    mat = bone.matrix_local
-                    translation = bone.tail_local
+                    mat = b.matrix_local
+                    translation = b.tail_local
+                    
+                    name = b.name
                 else:
                     # This is one of the inserted nodes
                     b = bones[n+1]
@@ -345,7 +312,7 @@ class ExportSMF(Operator, ExportHelper):
                 if slot.material:
                     mat = slot.material
                     mat_name = mat.name
-                    if mat_name in unique_images:
+                    if self.export_textures and mat_name in unique_images:
                         tex_name = unique_images[mat_name].name
             
             model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
