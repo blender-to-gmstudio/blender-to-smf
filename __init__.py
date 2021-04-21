@@ -19,7 +19,7 @@ from math import *
 # invoke() function which calls the file selector.
 from bpy_extras.io_utils import ExportHelper, axis_conversion
 
-from bpy.props import StringProperty, BoolProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
 from bpy.types import Operator
 
 # TODO
@@ -36,25 +36,57 @@ class ExportSMF(Operator, ExportHelper):
     filename_ext = ".smf"
 
     filter_glob : StringProperty(
-            default="*.smf",
-            options={'HIDDEN'},
-            maxlen=255,  # Max internal buffer length, longer would be clamped.
-            )
+        default="*.smf",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
     
     export_textures : BoolProperty(
-            name="Export Textures",
-            description="Whether textures should be exported with the model",
-            default=False,
-            )
+        name="Export Textures",
+        description="Whether textures should be exported with the model",
+        default=False,
+    )
     
+    # "Advanced" export settings
     export_nla_tracks : BoolProperty(
             name="Export NLA Tracks",
             description="Whether to export multiple animations on all NLA tracks that are linked to this model (Experimental)",
             default=False,
     )
     
+    # TODO The below ones are to be added later
+    #export_nla_tracks : EnumProperty(
+    #    name="Animations",
+    #    description="How to export animations",
+    #    items=[
+    #        ("CUR","Current Action", "Export the Armature's current action", 0),
+    #        ("LNK","Linked NLA Actions", "Export all actions that are linked indirectly through NLA tracks", 1),
+    #        ("TRA","NLA Tracks", "Export each NLA track as a separate animation", 2),
+    #        ("SCN","Scene", "Export directly from the scene. This allows for the most advanced animations", 3),
+    #    ],
+    #    default="CUR",
+    #)
+    
+    #export_type : EnumProperty(
+    #    name="Export Type",
+    #    description="What to export",
+    #    items=[
+    #        ("KFR", "Keyframes", "Export all keyframes", 0),
+    #        ("SPL", "Samples", "Sample the animation at a given rate", 1),
+    #    ],
+    #    default="KFR",
+    #)
+    
+    #mult : IntProperty(
+    #    name="Multiplier",
+    #    description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
+    #    default=4,
+    #    soft_min=4,
+    #    soft_max=20,
+    #)
+    
     @staticmethod
-    def prepare_mesh(mesh):
+    def prepare_mesh(obj, obj_rig, mesh):
         """Triangulate the given mesh using the BMesh library"""
         import bmesh
         
@@ -67,13 +99,14 @@ class ExportSMF(Operator, ExportHelper):
         bmesh.ops.mirror(bm,
             geom=geom_orig,
             axis='Y',
-            matrix=Matrix(),
             merge_dist=-1
         )
         bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
+            matrix=Matrix(),
         bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
         """
         
+        #bmesh.ops.transform(bm, matrix=obj_rig.matrix_world, space=obj.matrix_world, verts=bm.verts[:])
         bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
         
         bm.to_mesh(mesh)
@@ -216,6 +249,10 @@ class ExportSMF(Operator, ExportHelper):
                     
                     name = "Inserted for " + b.name
                 
+                # Add the world transform to the nodes
+                #mat_w = rig_object.matrix_world.copy()
+                #mat = mat_w @ mat
+                
                 # Construct a list containing matrix values in the right order
                 vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
                 vals[12:15] = translation[:]
@@ -256,7 +293,7 @@ class ExportSMF(Operator, ExportHelper):
         model_bytes.extend(pack('B', no_models))
         for obj in model_list:
             mesh = obj.data.copy()
-            ExportSMF.prepare_mesh(mesh)
+            ExportSMF.prepare_mesh(obj, rig_object, mesh)
             
             number_of_verts = 3 * len(mesh.polygons)
             size = number_of_verts * SMF_vertex_format_size
