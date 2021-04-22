@@ -106,7 +106,10 @@ class ExportSMF(Operator, ExportHelper):
         bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
         """
         
-        #bmesh.ops.transform(bm, matrix=obj_rig.matrix_world, space=obj.matrix_world, verts=bm.verts[:])
+        # This makes sure the mesh is in the rig's coordinate system
+        bmesh.ops.transform(bm, matrix=obj_rig.matrix_world, space=obj.matrix_world, verts=bm.verts[:])
+        
+        # Triangulate the mesh
         bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
         
         bm.to_mesh(mesh)
@@ -193,12 +196,12 @@ class ExportSMF(Operator, ExportHelper):
         
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
-        print("SMF Node List")
-        print("-------------")
+        # TODO Check if we selected a rig!
         bones = [bone for bone in rig.bones]
         bones_orig = bones.copy()
         for bone in bones_orig:
             if bone.parent and not bone.use_connect:
+            #if not bone.use_connect:
                 pos = bones.index(bone)
                 bones.insert(pos, None)
         
@@ -217,6 +220,7 @@ class ExportSMF(Operator, ExportHelper):
             print("RIG")
             print("---")
             debug_rig = []
+            debug_vals = []
             # Export all bones' tails => that's it!
             # Make sure to have a root bone!
             for n, bone in enumerate(bones):
@@ -228,13 +232,14 @@ class ExportSMF(Operator, ExportHelper):
                     connected = b.use_connect
                     
                     if b.parent and not b.use_connect:
+                    #if not b.use_connect:
                         # This is a node for which an added node has been written
                         parent_bone_index = n-1
                         connected = True
                         bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
                     
-                    mat = b.matrix_local
-                    translation = b.tail_local
+                    matrix = b.matrix_local.copy()
+                    matrix.translation = b.tail_local[:]
                     
                     name = b.name
                 else:
@@ -244,18 +249,23 @@ class ExportSMF(Operator, ExportHelper):
                     parent_bone_index = 0 if not b.parent else bones.index(b.parent)
                     connected = b.use_connect
                     
-                    mat = b.matrix_local
-                    translation = b.head_local
+                    matrix = b.matrix_local.copy()
+                    matrix.translation = b.head_local[:]
                     
                     name = "Inserted for " + b.name
                 
                 # Add the world transform to the nodes
-                #mat_w = rig_object.matrix_world.copy()
-                #mat = mat_w @ mat
+                mat_w = rig_object.matrix_world.copy()
+                mat_w @= matrix
+                
+                all = mat_w.decompose()
+                t = all[0]
+                mat_w = all[1].to_matrix().to_4x4()
+                mat_w.translation = t[:]
+                # Skip the scale entirely!
                 
                 # Construct a list containing matrix values in the right order
-                vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                vals[12:15] = translation[:]
+                vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
                 
                 rig_bytes.extend(pack('f'*16, *vals))
                 rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
@@ -263,13 +273,22 @@ class ExportSMF(Operator, ExportHelper):
                 rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
                 rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
                 
-                t = translation[:]
+                t = mat_w.translation
                 debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
+                debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
+                #print(n)
+                #info = mat_w.decompose()
+                #print(info[0])
+                #print(info[1])
+                #print(info[2])
             
             # Print some extended, readable debug info
-            for d in debug_rig:
-                s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<32} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
+            print("SMF Node List")
+            print("-------------")
+            for i, d in enumerate(debug_rig):
+                s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<40} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
                 print(s)
+                print(debug_vals[i])
         
         # Create the bindmap (i.e. which bones get sent to the shader in SMF)
         # See smf_rig.update_bindmap (we only need the bindmap part here!)
