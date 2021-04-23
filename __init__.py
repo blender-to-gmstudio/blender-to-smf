@@ -258,6 +258,7 @@ class ExportSMF(Operator, ExportHelper):
                 mat_w = rig_object.matrix_world.copy()
                 mat_w @= matrix
                 
+                # Remove the scale (it causes issues)
                 all = mat_w.decompose()
                 t = all[0]
                 mat_w = all[1].to_matrix().to_4x4()
@@ -418,14 +419,21 @@ class ExportSMF(Operator, ExportHelper):
                         bone = rig_object.pose.bones[rbone.name]
                         
                         # Use bone matrix
-                        mat = bone.matrix
-                        vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                        vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                        mat = bone.matrix.copy()
                     else:
-                        # Use an identity matrix
+                        # Use an identity matrix (i.e. no change)
                         mat = Matrix()
-                        vals = [j for i in mat.transposed() for j in i]     # Convert to GM's matrix element order
-                        vals[12:15] = bone.tail[:]                          # Write the tail as translation
+                    
+                    mat.translation = bone.tail[:]
+                    mat_w = rig_object.matrix_world.copy()
+                    mat_w @= mat
+                    all = mat_w.decompose()
+                    mat_final = all[1].to_matrix().to_4x4()
+                    mat_final.translation = all[0][:]
+                    #print(info[0])
+                    #print(info[1])
+                    #print(info[2])
+                    vals = [j for i in mat_final.transposed() for j in i]   # Convert to GM's matrix element order
                     
                     byte_data.extend(pack('f'*16, *vals))
             
