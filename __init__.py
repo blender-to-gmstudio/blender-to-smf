@@ -14,17 +14,47 @@ import bpy
 from struct import pack, calcsize
 from mathutils import *
 from math import *
+from .smf import import_smf, unpack_string_from
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper, axis_conversion
+from bpy_extras.io_utils import ExportHelper, ImportHelper, axis_conversion
 
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
 from bpy.types import Operator
 
 # TODO
-#class ImportSMF(Operator, ImportHelper):
-#    pass
+class ImportSMF(Operator, ImportHelper):
+    bl_idname="import_scene.smf"
+    bl_label = "SMF (*.smf)"
+    bl_options = {'REGISTER'}
+    
+    filename_ext = ".smf"
+
+    filter_glob: StringProperty(
+        default="*.smf",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    use_setting: BoolProperty(
+        name="Example Boolean",
+        description="Example Tooltip",
+        default=True,
+    )
+
+    type: EnumProperty(
+        name="Example Enum",
+        description="Choose between two items",
+        items=(
+            ('OPT_A', "First Option", "Description one"),
+            ('OPT_B', "Second Option", "Description two"),
+        ),
+        default='OPT_A',
+    )
+
+    def execute(self, context):
+        return import_smf(self.filepath)
 
 class ExportSMF(Operator, ExportHelper):
     """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
@@ -179,13 +209,14 @@ class ExportSMF(Operator, ExportHelper):
             for img in unique_images.values():
                 channels, item_number = img.channels, len(img.pixels)
                 pixel_number = int(item_number/channels)
+                pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
                 
                 texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
                 texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
                 
                 print(img.name, img.size[:])
                 
-                bytedata = [floor(component*255) for component in img.pixels[:]]
+                bytedata = [floor(component*255) for component in pixel_data]
                 texture_bytes.extend(pack('B'*item_number,*bytedata))
         else:
             texture_bytes.extend(pack('B', len(unique_images)))
@@ -257,13 +288,10 @@ class ExportSMF(Operator, ExportHelper):
                 # Add the world transform to the nodes
                 mat_w = rig_object.matrix_world.copy()
                 mat_w @= matrix
-                
-                # Remove the scale (it causes issues)
                 all = mat_w.decompose()
                 t = all[0]
                 mat_w = all[1].to_matrix().to_4x4()
                 mat_w.translation = t[:]
-                # Skip the scale entirely!
                 
                 # Construct a list containing matrix values in the right order
                 vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
@@ -277,11 +305,6 @@ class ExportSMF(Operator, ExportHelper):
                 t = mat_w.translation
                 debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
                 debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
-                #print(n)
-                #info = mat_w.decompose()
-                #print(info[0])
-                #print(info[1])
-                #print(info[2])
             
             # Print some extended, readable debug info
             print("SMF Node List")
@@ -430,9 +453,6 @@ class ExportSMF(Operator, ExportHelper):
                     all = mat_w.decompose()
                     mat_final = all[1].to_matrix().to_4x4()
                     mat_final.translation = all[0][:]
-                    #print(info[0])
-                    #print(info[1])
-                    #print(info[2])
                     vals = [j for i in mat_final.transposed() for j in i]   # Convert to GM's matrix element order
                     
                     byte_data.extend(pack('f'*16, *vals))
@@ -532,19 +552,26 @@ class ExportSMF(Operator, ExportHelper):
         return {'FINISHED'}
 
 
-# Only needed if you want to add into a dynamic menu
 def menu_func_export(self, context):
     self.layout.operator(ExportSMF.bl_idname, text="SMF (*.smf)")
 
 
+def menu_func_import(self, context):
+    self.layout.operator(ImportSMF.bl_idname, text="SMF (*.smf)")
+
+
 def register():
     bpy.utils.register_class(ExportSMF)
+    bpy.utils.register_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
     bpy.utils.unregister_class(ExportSMF)
+    bpy.utils.unregister_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
 
 if __name__ == "__main__":
