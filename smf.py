@@ -5,7 +5,6 @@ import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
-from math import floor
 
 SMF_version = 10
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")
@@ -210,13 +209,8 @@ def export_smf(filepath, context):
                 
                 name = "Inserted for " + b.name
             
-            # Add the world transform to the nodes
-            mat_w = rig_object.matrix_world.copy()
-            mat_w @= matrix
-            all = mat_w.decompose()
-            t = all[0]
-            mat_w = all[1].to_matrix().to_4x4()
-            mat_w.translation = t[:]
+            # Add the world transform to the nodes, ignore scale
+            mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
             
             # Construct a list containing matrix values in the right order
             vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
@@ -369,13 +363,8 @@ def export_smf(filepath, context):
                     mat = Matrix()
                 
                 mat.translation = bone.tail[:]
-                mat_w = rig_object.matrix_world.copy()
-                mat_w @= mat
-                all = mat_w.decompose()
-                mat_final = all[1].to_matrix().to_4x4()
-                mat_final.translation = all[0][:]
+                mat_final = apply_world_matrix(mat, rig_object.matrix_world)
                 vals = [j for i in mat_final.transposed() for j in i]   # Convert to GM's matrix element order
-                
                 byte_data.extend(pack('f'*16, *vals))
         
         # Restore frame position

@@ -15,13 +15,14 @@ from .smf import export_smf, import_smf
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper, ImportHelper, axis_conversion
+from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
 from bpy.types import Operator
 
 # TODO
 class ImportSMF(Operator, ImportHelper):
+    """Import an SMF 3D model"""
     bl_idname="import_scene.smf"
     bl_label = "SMF (*.smf)"
     bl_options = {'REGISTER'}
@@ -97,6 +98,7 @@ class ExportSMF(Operator, ExportHelper):
     #)
 
     def execute(self, context):
+        # TODO Pass export parameters the proper way
         return export_smf(self.filepath, context)
 
 
