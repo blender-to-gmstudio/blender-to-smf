@@ -8,8 +8,7 @@ SMF_version = 10
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")
 SMF_format_size = SMF_format_struct.size            # 44
 
-def export():
-    pass
+### EXPORT ###
 
 def rig_to_buffer():
     pass
@@ -42,14 +41,53 @@ def animation_to_buffer(scene, rig_object, anim):
     return animation_bytes
 
 def prep_mesh(obj, obj_rig, mesh):
-    pass
+    """Triangulate the given mesh using the BMesh library"""
+    import bmesh
+    
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    
+    """
+    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
+    # See https://blender.stackexchange.com/a/122321
+    bmesh.ops.mirror(bm,
+        geom=geom_orig,
+        axis='Y',
+        merge_dist=-1
+    )
+    bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
+        matrix=Matrix(),
+    bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+    """
+    
+    # This makes sure the mesh is in the rig's coordinate system
+    bmesh.ops.transform(bm, matrix=obj_rig.matrix_world, space=obj.matrix_world, verts=bm.verts[:])
+    
+    # Triangulate the mesh
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+    
+    bm.to_mesh(mesh)
+    bm.free()
 
 def node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
-    pass
+    # TODO Insert root node (optional?)
+    armature = armature_object.data
+    bones = [bone for bone in armature.bones]
+    bones_orig = bones.copy()
+    for bone in bones_orig:
+        if bone.parent and not bone.use_connect:
+        #if not bone.use_connect:
+            pos = bones.index(bone)
+            bones.insert(pos, None)
+    return bones
 
 def bindmap():
     """"""
+    pass
+
+def export_smf(filepath):
+    """Main entry point for SMF export"""
     pass
 
 def precalc_weights(armature_object, mesh_objects):
@@ -61,12 +99,12 @@ def apply_world_matrix(matrix, matrix_world):
     mat_w = matrix_world.copy()
     mat_w @= matrix
     deco = mat_w.decompose()
-    t = deco[0]
     mat_w = deco[1].to_matrix().to_4x4()
-    mat_w.translation = t[:]
+    mat_w.translation = deco[0][:]
     return mat_w
 
-### IMPORT
+### IMPORT ###
+
 from struct import unpack, unpack_from
 
 def unpack_string_from(data, offset=0):

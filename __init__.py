@@ -37,22 +37,6 @@ class ImportSMF(Operator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    use_setting: BoolProperty(
-        name="Example Boolean",
-        description="Example Tooltip",
-        default=True,
-    )
-
-    type: EnumProperty(
-        name="Example Enum",
-        description="Choose between two items",
-        items=(
-            ('OPT_A', "First Option", "Description one"),
-            ('OPT_B', "Second Option", "Description two"),
-        ),
-        default='OPT_A',
-    )
-
     def execute(self, context):
         return import_smf(self.filepath)
 
@@ -380,6 +364,8 @@ class ExportSMF(Operator, ExportHelper):
                     mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bone_names]
                     groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
                     s = sum([g.weight for g in groups])
+                    print(groups)
+                    print([g.weight for g in groups])
                     for index, group in enumerate(groups):            # 4 bone weights max!
                         vg_index = group.group                        # Index of the vertex group
                         vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
