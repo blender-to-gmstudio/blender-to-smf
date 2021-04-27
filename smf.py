@@ -71,12 +71,8 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def export_smf(filepath, context):
+def export_smf(filepath, context, export_textures, export_nla_tracks):
     """Main entry point for SMF export"""
-    # Export settings (currently hardcoded)
-    export_textures = True
-    export_nla_tracks = True
-    
     # Figure out what we're going to export
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
