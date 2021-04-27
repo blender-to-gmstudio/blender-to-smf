@@ -78,27 +78,27 @@ class ExportSMF(Operator, ExportHelper):
     #    default="CUR",
     #)
     
-    #export_type : EnumProperty(
-    #    name="Export Type",
-    #    description="What to export",
-    #    items=[
-    #        ("KFR", "Keyframes", "Export all keyframes", 0),
-    #        ("SPL", "Samples", "Sample the animation at a given rate", 1),
-    #    ],
-    #    default="KFR",
-    #)
+    export_type : EnumProperty(
+        name="Export Type",
+        description="What to export",
+        items=[
+            ("KFR", "Keyframes", "Export all keyframes", 0),
+            ("SPL", "Samples", "Sample the animation at a given rate", 1),
+        ],
+        default="KFR",
+    )
     
-    #mult : IntProperty(
-    #    name="Multiplier",
-    #    description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
-    #    default=4,
-    #    soft_min=4,
-    #    soft_max=20,
-    #)
+    mult : IntProperty(
+        name="Multiplier",
+        description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
+        default=4,
+        soft_min=4,
+        soft_max=20,
+    )
 
     def execute(self, context):
         # TODO Pass export parameters the proper way
-        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks)
+        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks, self.mult)
 
 
 def menu_func_export(self, context):

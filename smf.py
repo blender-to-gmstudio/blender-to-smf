@@ -71,7 +71,7 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def export_smf(filepath, context, export_textures, export_nla_tracks):
+def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier):
     """Main entry point for SMF export"""
     # Figure out what we're going to export
     object_list = context.selected_objects
@@ -287,8 +287,8 @@ def export_smf(filepath, context, export_textures, export_nla_tracks):
                 model_bytes.extend(pack('BBBB', *indices))        # Bone indices
                 model_bytes.extend(pack('BBBB', *weights))        # Bone weights
                 
-                #bytedata = SMF_format_struct.pack()
-                #model_bytes.extend()
+                #vertex_bytedata = SMF_format_struct.pack()
+                #model_bytes.extend(vertex_bytedata)
         
         # Mat and tex name
         mat_name = ""
@@ -320,7 +320,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks):
         animation_bytes.extend(pack('B', True))                     # loop
         animation_bytes.extend(pack('f', frame_number/fps*1000))    # playTime (ms)
         animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
-        animation_bytes.extend(pack('B', 4))                        # sampleFrameMultiplier
+        animation_bytes.extend(pack('B', multiplier))               # sampleFrameMultiplier
         animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
         
         # PRE Skeleton must be in Pose Position (see Armature.pose_position)
@@ -398,6 +398,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks):
                         track.is_solo = True
                         
                         # TODO This needs a bit of work
+                        # TODO keyframes <-> samples
                         frame_indices = range(int(strip.frame_start), int(strip.frame_end+1))
                         frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
                         write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
@@ -418,6 +419,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks):
             # Single animation in armature object's action
             animation_bytes.extend(pack('B', 1))                        # animNum (one action)
             
+            #keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
             frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
             frame_max = int(context.scene.frame_end - context.scene.frame_start)
             write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
@@ -446,10 +448,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks):
         file.write(animation_bytes)
     
     return {'FINISHED'}
-
-def precalc_weights(armature_object, mesh_object):
-    """Pre-calculate the skinning weights for the given mesh object and armature"""
-    pass
 
 def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
