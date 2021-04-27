@@ -7,8 +7,8 @@ from mathutils import *
 from math import *
 
 SMF_version = 10
-SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")
-SMF_format_size = SMF_format_struct.size            # 44
+SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
+SMF_format_size = SMF_format_struct.size
 
 ### EXPORT ###
 
@@ -244,16 +244,10 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         mesh = obj.data.copy()
         prep_mesh(obj, rig_object, mesh)
         
-        number_of_verts = 3 * len(mesh.polygons)
-        size = number_of_verts * SMF_format_size
-        
         # Precalculate skinning info
-        #precalc_weights()
-        print("SKINNING INFO")
-        print("-------------")
         skin_indices = [None] * len(mesh.vertices)
         skin_weights = [None] * len(mesh.vertices)
-        for i, v in enumerate(mesh.vertices):
+        for v in mesh.vertices:
             mod_groups = [group for group in v.groups if obj.vertex_groups[group.group].name in bone_names]
             groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
             s = sum([g.weight for g in groups])
@@ -268,27 +262,29 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
             
             #print(v.index, indices[:], weights[:])
         
-        model_bytes.extend(pack('I', size))
         # Write vertex buffer contents
+        size = len(mesh.loops) * SMF_format_struct.size
+        model_bytes.extend(pack('I', size))
         uv_data = mesh.uv_layers.active.data
         for face in mesh.polygons:
             for loop in [mesh.loops[i] for i in face.loop_indices]:
+                vertex_data = []
+                
                 vert = mesh.vertices[loop.vertex_index]
-                model_bytes.extend(pack('fff', *(vert.co[:])))
                 normal_source = vert                              # One of vert, loop, face
                 normal = normal_source.normal
-                model_bytes.extend(pack('fff', *(normal[:])))     # TODO correct normals (vertex, loop, polygon)!
                 uv = uv_data[loop.index].uv
-                model_bytes.extend(pack('ff', *(uv[:])))          # uv
-                tan_int = [int(c*255) for c in loop.tangent]
-                model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
-                indices = skin_indices[vert.index]
-                weights = skin_weights[vert.index]
-                model_bytes.extend(pack('BBBB', *indices))        # Bone indices
-                model_bytes.extend(pack('BBBB', *weights))        # Bone weights
+                tan_int = [*(int(c*255) for c in loop.tangent), 0]
                 
-                #vertex_bytedata = SMF_format_struct.pack()
-                #model_bytes.extend(vertex_bytedata)
+                vertex_data.extend(vert.co)
+                vertex_data.extend(vert.normal)
+                vertex_data.extend(uv)
+                vertex_data.extend(tan_int)
+                vertex_data.extend(skin_indices[vert.index])
+                vertex_data.extend(skin_weights[vert.index])
+                
+                vertex_bytedata = SMF_format_struct.pack(*vertex_data)
+                model_bytes.extend(vertex_bytedata)
         
         # Mat and tex name
         mat_name = ""
