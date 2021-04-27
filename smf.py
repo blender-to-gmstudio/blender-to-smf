@@ -252,26 +252,25 @@ def export_smf(filepath, context):
         size = number_of_verts * SMF_format_size
         
         # Precalculate skinning info
-        # TODO
         #precalc_weights()
-        """
-        # Optimize a bit by pre-calculating skinning info
-        skin_indices = [[0, 0, 0, 0]] * len(mesh.vertices)
-        skin_weights = [[1, 0, 0, 0]] * len(mesh.vertices)
-        for v in mesh.vertices:
+        print("SKINNING INFO")
+        print("-------------")
+        skin_indices = [None] * len(mesh.vertices)
+        skin_weights = [None] * len(mesh.vertices)
+        for i, v in enumerate(mesh.vertices):
             mod_groups = [group for group in v.groups if obj.vertex_groups[group.group].name in bone_names]
             groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
             s = sum([g.weight for g in groups])
-            indices = skin_indices[v.index]
-            weights = skin_weights[v.index]
-            for index, group in enumerate(groups):            # 4 bone weights max!
-                vg_index = group.group                        # Index of the vertex group
-                vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
+            skin_indices[v.index] = [0,0,0,0]
+            skin_weights[v.index] = [1,0,0,0]
+            for index, group in enumerate(groups):              # 4 bone weights max!
+                vg_index = group.group                          # Index of the vertex group
+                vg_name = obj.vertex_groups[vg_index].name      # Name of the vertex group
                 w = group.weight/s*255
-                indices[index] = bindmap[vg_name]
-                weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+                skin_indices[v.index][index] = bindmap[vg_name]
+                skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
             
-            print(v.index, indices[:], weights[:])"""
+            #print(v.index, indices[:], weights[:])
         
         model_bytes.extend(pack('I', size))
         # Write vertex buffer contents
@@ -287,22 +286,13 @@ def export_smf(filepath, context):
                 model_bytes.extend(pack('ff', *(uv[:])))          # uv
                 tan_int = [int(c*255) for c in loop.tangent]
                 model_bytes.extend(pack('BBBB', *(*tan_int[:],0)))
-                indices, weights = [0,0,0,0], [1,0,0,0]
-                # TODO This part needs to be taken out of this loop, it's awfully slow
-                # (pre-calculate this!)
-                mod_groups = [group for group in vert.groups if obj.vertex_groups[group.group].name in bone_names]
-                groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
-                s = sum([g.weight for g in groups])
-                print(groups)
-                print([g.weight for g in groups])
-                for index, group in enumerate(groups):            # 4 bone weights max!
-                    vg_index = group.group                        # Index of the vertex group
-                    vg_name = obj.vertex_groups[vg_index].name    # Name of the vertex group
-                    indices[index] = bindmap[vg_name]
-                    w = group.weight/s*255
-                    weights[index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+                indices = skin_indices[vert.index]
+                weights = skin_weights[vert.index]
                 model_bytes.extend(pack('BBBB', *indices))        # Bone indices
                 model_bytes.extend(pack('BBBB', *weights))        # Bone weights
+                
+                #bytedata = SMF_format_struct.pack()
+                #model_bytes.extend()
         
         # Mat and tex name
         mat_name = ""
@@ -461,8 +451,8 @@ def export_smf(filepath, context):
     
     return {'FINISHED'}
 
-def precalc_weights(armature_object, mesh_objects):
-    """Pre-calculate the skinning weights for the given selection of """
+def precalc_weights(armature_object, mesh_object):
+    """Pre-calculate the skinning weights for the given mesh object and armature"""
     pass
 
 def apply_world_matrix(matrix, matrix_world):

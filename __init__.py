@@ -20,7 +20,6 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
 from bpy.types import Operator
 
-# TODO
 class ImportSMF(Operator, ImportHelper):
     """Import an SMF 3D model"""
     bl_idname="import_scene.smf"
