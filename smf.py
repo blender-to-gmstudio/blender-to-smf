@@ -12,9 +12,6 @@ SMF_format_size = SMF_format_struct.size
 
 ### EXPORT ###
 
-def rig_to_buffer():
-    pass
-
 def prep_mesh(obj, obj_rig, mesh):
     """Triangulate the given mesh using the BMesh library"""
     import bmesh
@@ -78,8 +75,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
     
-    unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
-    
     # Check if we can export a valid rig
     # (supported are one or more connected hierarchies each with a single root bone in a single armature)
     rig_object = None
@@ -101,6 +96,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     
     # Write textures and their image data (same thing as seen from SMF)
     # Get unique images and keep their reference to the material that uses them
+    unique_materials = {slot.material for obj in model_list for slot in obj.material_slots if slot.material != None}
     unique_images = {}
     if export_textures:
         for mat in unique_materials:
@@ -172,7 +168,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         print("---")
         debug_rig = []
         debug_vals = []
-        # Export all bones' tails => that's it!
         # Make sure to have a root bone!
         for n, bone in enumerate(bones):
             if bone:
@@ -450,7 +445,12 @@ def apply_world_matrix(matrix, matrix_world):
     mat_w = matrix_world.copy()
     mat_w @= matrix
     deco = mat_w.decompose()
-    mat_w = deco[1].to_matrix().to_4x4()
+    mat_rot = deco[1].to_matrix()
+    temp = mat_rot.col[0][:]             # Swap columns
+    mat_rot.col[0] = mat_rot.col[1][:]
+    mat_rot.col[1] = mat_rot.col[2][:]
+    mat_rot.col[2] = temp
+    mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
     return mat_w
 
