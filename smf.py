@@ -446,7 +446,7 @@ def apply_world_matrix(matrix, matrix_world):
     mat_w @= matrix
     deco = mat_w.decompose()
     mat_rot = deco[1].to_matrix()
-    temp = mat_rot.col[0][:]             # Swap columns
+    temp = mat_rot.col[0][:]             # Swap columns for use with SMF
     mat_rot.col[0] = mat_rot.col[1][:]
     mat_rot.col[1] = mat_rot.col[2][:]
     mat_rot.col[2] = temp
