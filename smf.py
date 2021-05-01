@@ -10,6 +10,8 @@ SMF_version = 10
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
+mat_mirror_y = Matrix.Scale(-1, 4, Vector((0.0, 1.0, 0.0)))
+
 ### EXPORT ###
 
 def prep_mesh(obj, obj_rig, mesh):
@@ -19,7 +21,6 @@ def prep_mesh(obj, obj_rig, mesh):
     bm = bmesh.new()
     bm.from_mesh(mesh)
     
-    """
     geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     # See https://blender.stackexchange.com/a/122321
     bmesh.ops.mirror(bm,
@@ -28,12 +29,15 @@ def prep_mesh(obj, obj_rig, mesh):
         merge_dist=-1
     )
     bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
-        matrix=Matrix(),
     bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
-    """
     
     # This makes sure the mesh is in the rig's coordinate system
-    bmesh.ops.transform(bm, matrix=obj_rig.matrix_world, space=obj.matrix_world, verts=bm.verts[:])
+    if obj.parent == obj_rig:
+        bmesh.ops.transform(bm,
+            matrix=obj_rig.matrix_world,
+            space=obj.matrix_world,
+            verts=bm.verts[:]
+            )
     
     # Triangulate the mesh
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
@@ -201,7 +205,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 name = "Inserted for " + b.name
             
             # Add the world transform to the nodes, ignore scale
-            mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
+            mat_w = apply_world_matrix(matrix, mat_mirror_y @ rig_object.matrix_world)
             
             # Construct a list containing matrix values in the right order
             vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
