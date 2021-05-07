@@ -10,26 +10,14 @@ SMF_version = 10
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
-mat_mirror_y = Matrix.Scale(-1, 4, Vector((0.0, 1.0, 0.0)))
-
 ### EXPORT ###
 
-def prep_mesh(obj, obj_rig, mesh):
+def prep_mesh(obj, obj_rig, mesh, mirror_y=True):
     """Triangulate the given mesh using the BMesh library"""
     import bmesh
     
     bm = bmesh.new()
     bm.from_mesh(mesh)
-    
-    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
-    # See https://blender.stackexchange.com/a/122321
-    bmesh.ops.mirror(bm,
-        geom=geom_orig,
-        axis='Y',
-        merge_dist=-1
-    )
-    bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
-    bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
     
     # This makes sure the mesh is in the rig's coordinate system
     if obj.parent == obj_rig:
@@ -38,6 +26,17 @@ def prep_mesh(obj, obj_rig, mesh):
             space=obj.matrix_world,
             verts=bm.verts[:]
             )
+    
+    if mirror_y:
+        geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
+        # See https://blender.stackexchange.com/a/122321
+        bmesh.ops.mirror(bm,
+            geom=geom_orig,
+            axis='Y',
+            merge_dist=-1
+        )
+        bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
+        bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
     
     # Triangulate the mesh
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
@@ -78,6 +77,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
+    y_mirror = False
     
     # Check if we can export a valid rig
     # (supported are one or more connected hierarchies each with a single root bone in a single armature)
@@ -205,7 +205,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 name = "Inserted for " + b.name
             
             # Add the world transform to the nodes, ignore scale
-            mat_w = apply_world_matrix(matrix, mat_mirror_y @ rig_object.matrix_world)
+            mat_w = apply_world_matrix(matrix, rig_object.matrix_world, y_mirror)
             
             # Construct a list containing matrix values in the right order
             vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
@@ -241,7 +241,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
         mesh = obj.data.copy()
-        prep_mesh(obj, rig_object, mesh)
+        prep_mesh(obj, rig_object, mesh, y_mirror)
         
         # Precalculate skinning info
         skin_indices = [None] * len(mesh.vertices)
@@ -344,7 +344,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                     mat = Matrix()
                 
                 mat.translation = bone.tail[:]
-                mat_final = apply_world_matrix(mat, rig_object.matrix_world)
+                mat_final = apply_world_matrix(mat, rig_object.matrix_world, y_mirror)
                 vals = [j for i in mat_final.transposed() for j in i]   # Convert to GM's matrix element order
                 byte_data.extend(pack('f'*16, *vals))
         
@@ -444,7 +444,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     
     return {'FINISHED'}
 
-def apply_world_matrix(matrix, matrix_world):
+def apply_world_matrix(matrix, matrix_world, mirror_y=True):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
     mat_w = matrix_world.copy()
     mat_w @= matrix
@@ -456,6 +456,9 @@ def apply_world_matrix(matrix, matrix_world):
     mat_rot.col[2] = temp
     mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
+    #if mirror_y:
+    #    mat_s = Matrix.Scale(-1, 4, Vector((1.0, 0.0, 0.0)))
+    #    mat_w @= mat_s
     return mat_w
 
 ### IMPORT ###
