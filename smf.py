@@ -208,7 +208,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world, y_mirror)
             
             # Construct a list containing matrix values in the right order
-            vals = [j for i in mat_w.transposed() for j in i]   # Convert to GM's matrix element order
+            vals = [j for i in mat_w.col for j in i]
             
             rig_bytes.extend(pack('f'*16, *vals))
             rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
@@ -345,7 +345,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 
                 mat.translation = bone.tail[:]
                 mat_final = apply_world_matrix(mat, rig_object.matrix_world, y_mirror)
-                vals = [j for i in mat_final.transposed() for j in i]   # Convert to GM's matrix element order
+                vals = [j for i in mat_final.col for j in i]
                 byte_data.extend(pack('f'*16, *vals))
         
         # Restore frame position
