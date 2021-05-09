@@ -12,7 +12,7 @@ SMF_format_size = SMF_format_struct.size
 
 ### EXPORT ###
 
-def prep_mesh(obj, obj_rig, mesh, mirror_y=True):
+def prep_mesh(obj, obj_rig, mesh):
     """Triangulate the given mesh using the BMesh library"""
     import bmesh
     
@@ -27,16 +27,15 @@ def prep_mesh(obj, obj_rig, mesh, mirror_y=True):
             verts=bm.verts[:]
             )
     
-    if mirror_y:
-        geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
-        # See https://blender.stackexchange.com/a/122321
-        bmesh.ops.mirror(bm,
-            geom=geom_orig,
-            axis='Y',
-            merge_dist=-1
-        )
-        bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
-        bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
+    # See https://blender.stackexchange.com/a/122321
+    bmesh.ops.mirror(bm,
+        geom=geom_orig,
+        axis='Y',
+        merge_dist=-1
+    )
+    bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
+    bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
     
     # Triangulate the mesh
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
@@ -77,7 +76,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
-    y_mirror = True
     
     # Check if we can export a valid rig
     # (supported are one or more connected hierarchies each with a single root bone in a single armature)
@@ -205,7 +203,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 name = "Inserted for " + b.name
             
             # Add the world transform to the nodes, ignore scale
-            mat_w = apply_world_matrix(matrix, rig_object.matrix_world, y_mirror)
+            mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
             
             # Construct a list containing matrix values in the right order
             vals = [j for i in mat_w.col for j in i]
@@ -241,7 +239,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
         mesh = obj.data.copy()
-        prep_mesh(obj, rig_object, mesh, True)
+        prep_mesh(obj, rig_object, mesh)
         
         # Precalculate skinning info
         skin_indices = [None] * len(mesh.vertices)
@@ -344,7 +342,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                     mat = Matrix()
                 
                 mat.translation = bone.tail[:]
-                mat_final = apply_world_matrix(mat, rig_object.matrix_world, y_mirror)
+                mat_final = apply_world_matrix(mat, rig_object.matrix_world)
                 vals = [j for i in mat_final.col for j in i]
                 byte_data.extend(pack('f'*16, *vals))
         
@@ -444,13 +442,9 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     
     return {'FINISHED'}
 
-def apply_world_matrix(matrix, matrix_world, mirror_y=True):
+def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
-    if mirror_y:
-        mat_w = Matrix.Scale(-1, 4, Vector((0.0, 1.0, 0.0)))
-        mat_w @= matrix_world
-    else:
-        mat_w = matrix_world.copy()
+    mat_w = matrix_world.copy()
     mat_w @= matrix
     deco = mat_w.decompose()
     mat_rot = deco[1].to_matrix()
@@ -461,27 +455,17 @@ def apply_world_matrix(matrix, matrix_world, mirror_y=True):
     mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
     
-    #Mirror along x-axis
-    """
-    for (var j = 0; j < 16; j += 4)
-    {
-        M[j] = -M[j]
-    }
-    """
-    mat_w[0] = -mat_w[0]
-    mat_w[4] = -mat_w[4]
-    mat_w[8] = -mat_w[8]
+    mat_w.row[1] *= -1
     
-    #Switch second and third axes
-    temp1 = mat_w[4]
-    temp2 = mat_w[5]
-    temp3 = mat_w[6]
-    mat_w[4] = mat_w[8]
-    mat_w[5] = mat_w[9]
-    mat_w[6] = mat_w[10]
-    mat_w[8] = temp1
-    mat_w[9] = temp2
-    mat_w[10] = temp3
+    temp1 = mat_w[0][1]
+    temp2 = mat_w[1][1]
+    temp3 = mat_w[2][1]
+    mat_w[0][1] = mat_w[0][2]
+    mat_w[1][1] = mat_w[1][2]
+    mat_w[2][1] = mat_w[2][2]
+    mat_w[0][2] = temp1
+    mat_w[1][2] = temp2
+    mat_w[2][2] = temp3
     
     return mat_w
 
