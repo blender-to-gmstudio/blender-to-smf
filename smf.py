@@ -456,7 +456,6 @@ def apply_world_matrix(matrix, matrix_world):
     temp = mat_rot.col[0][:]
     mat_rot.col[0] = mat_rot.col[1][:]
     mat_rot.col[1] = temp
-    mat_rot.col[2] = mat_rot.col[2][:]
     mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
     
