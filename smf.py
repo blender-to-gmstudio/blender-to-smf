@@ -77,7 +77,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
-    y_mirror = False
+    y_mirror = True
     
     # Check if we can export a valid rig
     # (supported are one or more connected hierarchies each with a single root bone in a single armature)
@@ -241,7 +241,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
         mesh = obj.data.copy()
-        prep_mesh(obj, rig_object, mesh, y_mirror)
+        prep_mesh(obj, rig_object, mesh, True)
         
         # Precalculate skinning info
         skin_indices = [None] * len(mesh.vertices)
@@ -446,7 +446,11 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
 
 def apply_world_matrix(matrix, matrix_world, mirror_y=True):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
-    mat_w = matrix_world.copy()
+    if mirror_y:
+        mat_w = Matrix.Scale(-1, 4, Vector((0.0, 1.0, 0.0)))
+        mat_w @= matrix_world
+    else:
+        mat_w = matrix_world.copy()
     mat_w @= matrix
     deco = mat_w.decompose()
     mat_rot = deco[1].to_matrix()
@@ -456,9 +460,29 @@ def apply_world_matrix(matrix, matrix_world, mirror_y=True):
     mat_rot.col[2] = temp
     mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
-    #if mirror_y:
-    #    mat_s = Matrix.Scale(-1, 4, Vector((1.0, 0.0, 0.0)))
-    #    mat_w @= mat_s
+    
+    #Mirror along x-axis
+    """
+    for (var j = 0; j < 16; j += 4)
+    {
+        M[j] = -M[j]
+    }
+    """
+    mat_w[0] = -mat_w[0]
+    mat_w[4] = -mat_w[4]
+    mat_w[8] = -mat_w[8]
+    
+    #Switch second and third axes
+    temp1 = mat_w[4]
+    temp2 = mat_w[5]
+    temp3 = mat_w[6]
+    mat_w[4] = mat_w[8]
+    mat_w[5] = mat_w[9]
+    mat_w[6] = mat_w[10]
+    mat_w[8] = temp1
+    mat_w[9] = temp2
+    mat_w[10] = temp3
+    
     return mat_w
 
 ### IMPORT ###
