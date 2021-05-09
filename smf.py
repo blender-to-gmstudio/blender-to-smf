@@ -446,26 +446,23 @@ def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
     mat_w = matrix_world.copy()
     mat_w @= matrix
+    
+    # Decompose to get rid of scale
     deco = mat_w.decompose()
     mat_rot = deco[1].to_matrix()
-    temp = mat_rot.col[0][:]             # Swap columns for use with SMF
+    
+    # Swap columns for use with SMF
+    # Also add the translation
+    temp = mat_rot.col[0][:]
     mat_rot.col[0] = mat_rot.col[1][:]
-    mat_rot.col[1] = mat_rot.col[2][:]
-    mat_rot.col[2] = temp
+    mat_rot.col[1] = temp
+    mat_rot.col[2] = mat_rot.col[2][:]
     mat_w = mat_rot.to_4x4()
     mat_w.translation = deco[0][:]
     
+    # Invert y values of the vectors
+    # (i.e. mirror along Y to convert to SMF's left handed system)
     mat_w.row[1] *= -1
-    
-    temp1 = mat_w[0][1]
-    temp2 = mat_w[1][1]
-    temp3 = mat_w[2][1]
-    mat_w[0][1] = mat_w[0][2]
-    mat_w[1][1] = mat_w[1][2]
-    mat_w[2][1] = mat_w[2][2]
-    mat_w[0][2] = temp1
-    mat_w[1][2] = temp2
-    mat_w[2][2] = temp3
     
     return mat_w
 
