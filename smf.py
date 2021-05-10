@@ -43,7 +43,7 @@ def prep_mesh(obj, obj_rig, mesh):
     bm.to_mesh(mesh)
     bm.free()
 
-def node_list(armature_object):
+def smf_node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
     # TODO Insert root node (optional?)
     armature = armature_object.data
@@ -151,7 +151,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     # Construct node list for SMF
     # (heads of disconnected bones need to become nodes, too)
     # TODO Check if we selected a rig!
-    bones = node_list(rig_object)
+    bones = smf_node_list(rig_object)
     
     # Write rig
     rig_bytes = bytearray()
@@ -231,7 +231,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     bone_names = bindmap.keys()
     
     # Write models
-    # TODO Apply modifiers, location, rotation and scale, etc.
     model_bytes = bytearray()
     no_models = len(model_list)
     model_bytes.extend(pack('B', no_models))
@@ -256,8 +255,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 w = group.weight/s*255
                 skin_indices[v.index][index] = bindmap[vg_name]
                 skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
-            
-            #print(v.index, indices[:], weights[:])
         
         # Write vertex buffer contents
         size = len(mesh.loops) * SMF_format_struct.size
@@ -358,7 +355,8 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     print("---------")
     
     # Common variables
-    fps = context.scene.render.fps/context.scene.render.fps_base
+    render = context.scene.render
+    fps = render.fps/render.fps_base
     
     if export_nla_tracks:
         # Search for the presence of NLA tracks
@@ -404,6 +402,12 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
                 
                 # Restore things
                 rig_object.animation_data.action = action
+            else:
+                # No tracks
+                animation_bytes.extend(pack('B', 0))                    # animNum
+        else:
+            # No valid animation data
+            animation_bytes.extend(pack('B', 0))                        # animNum
     else:
         if not anim:
             # No valid animation
@@ -413,8 +417,12 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
             animation_bytes.extend(pack('B', 1))                        # animNum (one action)
             
             #keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
-            frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
-            frame_max = int(context.scene.frame_end - context.scene.frame_start)
+            # The below lines use the scene's frame range
+            #frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
+            #frame_max = int(context.scene.frame_end - context.scene.frame_start)
+            # Here we use the action's frame range
+            frame_range = anim.frame_range[:]
+            frame_indices = range(frame_range[0], frame_range[1])
             write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
     
     # Now build header
