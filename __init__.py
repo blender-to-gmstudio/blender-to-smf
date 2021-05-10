@@ -111,16 +111,16 @@ def menu_func_import(self, context):
 
 def register():
     bpy.utils.register_class(ExportSMF)
-    bpy.utils.register_class(ImportSMF)
+    #bpy.utils.register_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    #bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
     bpy.utils.unregister_class(ExportSMF)
-    bpy.utils.unregister_class(ImportSMF)
+    #bpy.utils.unregister_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    #bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
 
 if __name__ == "__main__":
