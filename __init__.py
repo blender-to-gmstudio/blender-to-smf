@@ -98,7 +98,7 @@ class ExportSMF(Operator, ExportHelper):
 
     def execute(self, context):
         # TODO Pass export parameters the proper way
-        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks, self.mult)
+        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks, self.export_type, self.mult)
 
 
 def menu_func_export(self, context):

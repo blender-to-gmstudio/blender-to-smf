@@ -70,15 +70,13 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier):
+def export_smf(filepath, context, export_textures, export_nla_tracks, export_type, multiplier):
     """Main entry point for SMF export"""
     # Figure out what we're going to export
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
     
-    # Check if we can export a valid rig
-    # (supported are one or more connected hierarchies each with a single root bone in a single armature)
     rig_object = None
     rig = None
     anim = None
@@ -88,25 +86,16 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         rig = rig_object.data
         anim_data = rig_object.animation_data
         if anim_data:
-            action = anim_data.action
-            if action:
-                anim = action
-            
             if export_nla_tracks:
                 tracks = anim_data.nla_tracks
                 if tracks:
                     for track in tracks:
-                        if track.strips[0]:
-                            animations.append(track.strips[0].action)
+                        strip = track.strips[0]
+                        if strip:
+                            animations.append(strip.action)
             else:
                 if anim_data.action:
                     animations.append(anim_data.action)
-        
-        if len(armature_list) > 1:
-            #self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
-            pass
-    
-    print(animations)
     
     # Initalize variables that we need across chunks
     bindmap = {}
@@ -373,79 +362,36 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     render = context.scene.render
     fps = render.fps/render.fps_base
     
-    if rig:
-        if export_nla_tracks:
-            # Search for the presence of NLA tracks
-            if rig_object.animation_data:
-                if rig_object.animation_data.nla_tracks:
-                    # Clear the influence of the current action
-                    action = rig_object.animation_data.action
-                    rig_object.animation_data.action = None
-                    
-                    # We have NLA tracks
-                    tracks = rig_object.animation_data.nla_tracks
-                    animation_bytes.extend(pack('B', len(tracks)))                          # animNum
-                    
-                    for track in tracks:
-                        # TODO Export entire tracks? Use track name instead?
-                        print("Track ", track.name)
-                        strips = track.strips
-                        if len(strips) > 0:
-                            # Use the first strip (assume only one per track for now)
-                            strip = strips[0]
-                            
-                            print("Strips: ", len(strips))
-                            print(strip.name)
-                            
-                            # Now play each track in solo and sample each animation
-                            # Make sure to reset the frame in advance so the rig gets reset properly
-                            context.scene.frame_set(context.scene.frame_start)
-                            
-                            is_solo_prev = track.is_solo
-                            track.is_solo = True
-                            
-                            # TODO This needs a bit of work
-                            # TODO keyframes <-> samples
-                            frame_indices = range(int(strip.frame_start), int(strip.frame_end+1))
-                            frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
-                            write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, frame_max, fps)
-                            
-                            track.is_solo = is_solo_prev
-                        else:
-                            # A bit of an issue here...
-                            print("We're not supposed to be here...")
-                            pass
-                    
-                    # Restore things
-                    rig_object.animation_data.action = action
-                else:
-                    # No tracks
-                    animation_bytes.extend(pack('B', 0))                    # animNum
-            else:
-                # No valid animation data
-                animation_bytes.extend(pack('B', 0))                        # animNum
+    # Write all animations (i.e. actions)
+    animation_bytes.extend(pack('B', len(animations)))
+    anim_data = rig_object.animation_data
+    for anim in animations:
+        # Remember state
+        action_prev = anim_data.action
+        mute_prev = [False] * len(anim_data.nla_tracks)
+        for i, track in enumerate(anim_data.nla_tracks):
+            mute_prev[i] = track.mute
+            track.mute = True
+        
+        # Set animation (i.e. action)
+        anim_data.action = anim
+        
+        # Determine keyframe times
+        if export_type == 'KFR':
+            kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
+            kf_end = kf_times[len(kf_times)-1]
         else:
-            if not anim:
-                # No valid animation
-                animation_bytes.extend(pack('B', 0))                        # animNum
-            else:
-                # Single animation in armature object's action
-                animation_bytes.extend(pack('B', 1))                        # animNum (one action)
-                
-                #keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
-                # The below lines use the scene's frame range
-                #frame_times = range(context.scene.frame_start, context.scene.frame_end+1)
-                #frame_max = int(context.scene.frame_end - context.scene.frame_start)
-                # Here we use the action's frame range
-                print("check")
-                frame_start, frame_end = anim.frame_range[:]
-                frame_times = []
-                for i in range(0, 20+1):
-                    frame_times.append(i/20*frame_end)
-                    write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_times, frame_end, fps)
-    else:
-        # No valid animation
-        animation_bytes.extend(pack('B', 0))                                # animNum
+            kf_times = range(anim.frame_start, anim.frame_end)
+            kf_end = anim.frame_end
+        print(kf_times)
+        
+        # Play and write animation data
+        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps)
+        
+        # Restore to previous state
+        rig_object.animation_data.action = action_prev
+        for i, track in enumerate(rig_object.animation_data.nla_tracks):
+            track.mute = mute_prev[i]
     
     # Now build header
     header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
