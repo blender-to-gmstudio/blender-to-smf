@@ -70,7 +70,7 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def export_smf(filepath, context, export_textures, export_nla_tracks, export_type, multiplier, subdivisions):
+def export_smf(operator, filepath, context, export_textures, export_nla_tracks, export_type, multiplier, subdivisions):
     """Main entry point for SMF export"""
     # Figure out what we're going to export
     object_list = context.selected_objects
@@ -144,6 +144,10 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
             texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
             
             print(img.name, img.size[:])
+            
+            for cpo in img.size:
+                if floor(log2(cpo)) != log2(cpo):
+                    operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
             
             bytedata = [floor(component*255) for component in pixel_data]
             texture_bytes.extend(pack('B'*item_number,*bytedata))
