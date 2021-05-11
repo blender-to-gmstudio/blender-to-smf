@@ -80,7 +80,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
     rig_object = None
     rig = None
     anim = None
-    animations = []
+    animations = set()
     if len(armature_list) > 0:
         rig_object = armature_list[0]
         rig = rig_object.data
@@ -90,12 +90,11 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
                 tracks = anim_data.nla_tracks
                 if tracks:
                     for track in tracks:
-                        strip = track.strips[0]
-                        if strip:
-                            animations.append(strip.action)
+                        for strip in track.strips:
+                            animations.add(strip.action)
             else:
                 if anim_data.action:
-                    animations.append(anim_data.action)
+                    animations.add(anim_data.action)
     
     # Initalize variables that we need across chunks
     bindmap = {}
