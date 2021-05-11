@@ -82,14 +82,14 @@ class ExportSMF(Operator, ExportHelper):
         name="Export Type",
         description="What to export",
         items=[
-            ("KFR", "Keyframes", "Export all keyframes", 0),
+            ("KFR", "Keyframes", "Export the keyframes as defined in the animation", 0),
             ("SPL", "Samples", "Sample the animation at a given rate", 1),
         ],
         default="KFR",
     )
     
     mult : IntProperty(
-        name="Multiplier",
+        name="Sample Frame Multiplier",
         description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
         default=4,
         soft_min=4,

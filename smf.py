@@ -20,7 +20,7 @@ def prep_mesh(obj, obj_rig, mesh):
     bm.from_mesh(mesh)
     
     # This makes sure the mesh is in the rig's coordinate system
-    if obj.parent == obj_rig:
+    if obj_rig != None and obj.parent == obj_rig:
         bmesh.ops.transform(bm,
             matrix=obj_rig.matrix_world,
             space=obj.matrix_world,
@@ -82,17 +82,35 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     rig_object = None
     rig = None
     anim = None
+    animations = []
     if len(armature_list) > 0:
         rig_object = armature_list[0]
-        rig = rig_object.data       # Export the first armature that we find
-        if rig_object.animation_data:
-            action = rig_object.animation_data.action
+        rig = rig_object.data
+        anim_data = rig_object.animation_data
+        if anim_data:
+            action = anim_data.action
             if action:
                 anim = action
+            
+            if export_nla_tracks:
+                tracks = anim_data.nla_tracks
+                if tracks:
+                    for track in tracks:
+                        if track.strips[0]:
+                            animations.append(track.strips[0].action)
+            else:
+                if anim_data.action:
+                    animations.append(anim_data.action)
         
         if len(armature_list) > 1:
             #self.report({'WARNING'},"More than one armature in selection. SMF supports one armature. The wrong armature may be exported.")
             pass
+    
+    print(animations)
+    
+    # Initalize variables that we need across chunks
+    bindmap = {}
+    bone_names = []
     
     texture_bytes = bytearray()
     
@@ -148,11 +166,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     material_bytes = bytearray()
     material_bytes.extend(pack('B', len(unique_materials)))
     
-    # Construct node list for SMF
-    # (heads of disconnected bones need to become nodes, too)
-    # TODO Check if we selected a rig!
-    bones = smf_node_list(rig_object)
-    
     # Write rig
     rig_bytes = bytearray()
     
@@ -160,6 +173,14 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         # No (valid) armature for export
         rig_bytes.extend(pack('B',0))
     else:
+        # Construct node list for SMF
+        # (heads of disconnected bones need to become nodes, too)
+        bones = smf_node_list(rig_object)
+        
+        # Get the bindmap and relevant bone names
+        bindmap = smf_bindmap(bones)
+        bone_names = bindmap.keys()
+        
         rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
         
         if len(rig.bones) == 0:
@@ -225,10 +246,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
             s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<40} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
             print(s)
             print(debug_vals[i])
-    
-    # Get the bindmap and relevant bone names
-    bindmap = smf_bindmap(bones)
-    bone_names = bindmap.keys()
     
     # Write models
     model_bytes = bytearray()
@@ -303,26 +320,27 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     # Write animations
     animation_bytes = bytearray()
     
-    def write_animation_data(name, scene, byte_data, rig_object, frame_indices, fps):
+    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps):
         """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
-        frame_number = len(frame_indices)
+        frame_number = len(keyframe_times)
         animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
         animation_bytes.extend(pack('B', True))                     # loop
-        animation_bytes.extend(pack('f', frame_number/fps*1000))    # playTime (ms)
+        animation_bytes.extend(pack('f', frame_max/fps*1000))       # playTime (ms)
         animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
         animation_bytes.extend(pack('B', multiplier))               # sampleFrameMultiplier
         animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
         
         # PRE Skeleton must be in Pose Position (see Armature.pose_position)
         frame_prev = scene.frame_current
-        for frame in frame_indices:
-            scene.frame_set(frame)
+        for kf_time in keyframe_times:
+            subframe, frame = modf(kf_time)
+            scene.frame_set(frame, subframe=subframe)
             
-            kf_time = frame/frame_number
+            smf_kf_time = kf_time/frame_max
             
-            byte_data.extend(pack('f', kf_time))
+            byte_data.extend(pack('f', smf_kf_time))
             
-            print("Frame ", frame, " at time ", kf_time)
+            print("Blender frame ", kf_time, " at SMF time ", smf_kf_time)
             
             # Loop through the armature's PoseBones using the bone/node order we got earlier
             # This guarantees a correct mapping of PoseBones to Bones
@@ -346,9 +364,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
         # Restore frame position
         scene.frame_set(frame_prev)
     
-    # Print the bindmap right here!
-    print(bindmap)
-    
     # Export each NLA track linked to the armature object as an animation
     # (use the first action's name as the animation name for now)
     print("ANIMATION")
@@ -358,72 +373,79 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, multiplier
     render = context.scene.render
     fps = render.fps/render.fps_base
     
-    if export_nla_tracks:
-        # Search for the presence of NLA tracks
-        if rig_object.animation_data:
-            if rig_object.animation_data.nla_tracks:
-                # Clear the influence of the current action
-                action = rig_object.animation_data.action
-                rig_object.animation_data.action = None
-                
-                # We have NLA tracks
-                tracks = rig_object.animation_data.nla_tracks
-                animation_bytes.extend(pack('B', len(tracks)))                          # animNum
-                
-                for track in tracks:
-                    # TODO Export entire tracks? Use track name instead?
-                    print("Track ", track.name)
-                    strips = track.strips
-                    if len(strips) > 0:
-                        # Use the first strip (assume only one per track for now)
-                        strip = strips[0]
-                        
-                        print("Strips: ", len(strips))
-                        print(strip.name)
-                        
-                        # Now play each track in solo and sample each animation
-                        # Make sure to reset the frame in advance so the rig gets reset properly
-                        context.scene.frame_set(context.scene.frame_start)
-                        
-                        is_solo_prev = track.is_solo
-                        track.is_solo = True
-                        
-                        # TODO This needs a bit of work
-                        # TODO keyframes <-> samples
-                        frame_indices = range(int(strip.frame_start), int(strip.frame_end+1))
-                        frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
-                        write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
-                        
-                        track.is_solo = is_solo_prev
-                    else:
-                        # A bit of an issue here...
-                        print("We're not supposed to be here...")
-                        pass
-                
-                # Restore things
-                rig_object.animation_data.action = action
+    if rig:
+        if export_nla_tracks:
+            # Search for the presence of NLA tracks
+            if rig_object.animation_data:
+                if rig_object.animation_data.nla_tracks:
+                    # Clear the influence of the current action
+                    action = rig_object.animation_data.action
+                    rig_object.animation_data.action = None
+                    
+                    # We have NLA tracks
+                    tracks = rig_object.animation_data.nla_tracks
+                    animation_bytes.extend(pack('B', len(tracks)))                          # animNum
+                    
+                    for track in tracks:
+                        # TODO Export entire tracks? Use track name instead?
+                        print("Track ", track.name)
+                        strips = track.strips
+                        if len(strips) > 0:
+                            # Use the first strip (assume only one per track for now)
+                            strip = strips[0]
+                            
+                            print("Strips: ", len(strips))
+                            print(strip.name)
+                            
+                            # Now play each track in solo and sample each animation
+                            # Make sure to reset the frame in advance so the rig gets reset properly
+                            context.scene.frame_set(context.scene.frame_start)
+                            
+                            is_solo_prev = track.is_solo
+                            track.is_solo = True
+                            
+                            # TODO This needs a bit of work
+                            # TODO keyframes <-> samples
+                            frame_indices = range(int(strip.frame_start), int(strip.frame_end+1))
+                            frame_max = int(strip.action_frame_end+1 - strip.action_frame_start)
+                            write_animation_data(strip.name, context.scene, animation_bytes, rig_object, frame_indices, frame_max, fps)
+                            
+                            track.is_solo = is_solo_prev
+                        else:
+                            # A bit of an issue here...
+                            print("We're not supposed to be here...")
+                            pass
+                    
+                    # Restore things
+                    rig_object.animation_data.action = action
+                else:
+                    # No tracks
+                    animation_bytes.extend(pack('B', 0))                    # animNum
             else:
-                # No tracks
-                animation_bytes.extend(pack('B', 0))                    # animNum
+                # No valid animation data
+                animation_bytes.extend(pack('B', 0))                        # animNum
         else:
-            # No valid animation data
-            animation_bytes.extend(pack('B', 0))                        # animNum
+            if not anim:
+                # No valid animation
+                animation_bytes.extend(pack('B', 0))                        # animNum
+            else:
+                # Single animation in armature object's action
+                animation_bytes.extend(pack('B', 1))                        # animNum (one action)
+                
+                #keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
+                # The below lines use the scene's frame range
+                #frame_times = range(context.scene.frame_start, context.scene.frame_end+1)
+                #frame_max = int(context.scene.frame_end - context.scene.frame_start)
+                # Here we use the action's frame range
+                print("check")
+                frame_start, frame_end = anim.frame_range[:]
+                frame_times = []
+                for i in range(0, 20+1):
+                    frame_times.append(i/20*frame_end)
+                    write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_times, frame_end, fps)
     else:
-        if not anim:
-            # No valid animation
-            animation_bytes.extend(pack('B', 0))                        # animNum
-        else:
-            # Single animation in armature object's action
-            animation_bytes.extend(pack('B', 1))                        # animNum (one action)
-            
-            #keyframe_times = sorted({p.co[0] for fcurve in rig_object.animation_data.action.fcurves for p in fcurve.keyframe_points})
-            # The below lines use the scene's frame range
-            #frame_indices = range(context.scene.frame_start, context.scene.frame_end+1)
-            #frame_max = int(context.scene.frame_end - context.scene.frame_start)
-            # Here we use the action's frame range
-            frame_range = anim.frame_range[:]
-            frame_indices = range(frame_range[0], frame_range[1])
-            write_animation_data(anim.name, context.scene, animation_bytes, rig_object, frame_indices, fps)
+        # No valid animation
+        animation_bytes.extend(pack('B', 0))                                # animNum
     
     # Now build header
     header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
