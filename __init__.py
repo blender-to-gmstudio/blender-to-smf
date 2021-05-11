@@ -55,7 +55,7 @@ class ExportSMF(Operator, ExportHelper):
     export_textures : BoolProperty(
         name="Export Textures",
         description="Whether textures should be exported with the model",
-        default=False,
+        default=True,
     )
     
     # "Advanced" export settings
