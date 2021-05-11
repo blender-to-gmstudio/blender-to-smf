@@ -377,12 +377,19 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
         anim_data.action = anim
         
         # Determine keyframe times
-        if export_type == 'KFR':
+        if   export_type == 'KFR':
             kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
             kf_end = kf_times[len(kf_times)-1]
+        elif export_type == 'SPL':
+            kf_times = []
+            subdivisions = 10
+            for i in range(0, subdivisions+1):
+                kf_times.append(anim.frame_range[0] + (anim.frame_range[1]-anim.frame_range[0])*i/subdivisions)
+            kf_end = kf_times[subdivisions]
         else:
-            kf_times = range(anim.frame_start, anim.frame_end)
-            kf_end = anim.frame_end
+            # We shouldn't end up here
+            pass
+        
         print(kf_times)
         
         # Play and write animation data
