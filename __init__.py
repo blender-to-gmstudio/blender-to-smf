@@ -82,7 +82,7 @@ class ExportSMF(Operator, ExportHelper):
         name="Export Type",
         description="What to export",
         items=[
-            ("KFR", "Keyframes", "Export the keyframes as defined in the animation", 0),
+            ("KFR", "Keyframes", "Export the actual keyframes as defined in the animation", 0),
             ("SPL", "Samples", "Sample the animation at a given rate", 1),
         ],
         default="KFR",
@@ -95,10 +95,17 @@ class ExportSMF(Operator, ExportHelper):
         soft_min=4,
         soft_max=20,
     )
+    
+    subdivisions : IntProperty(
+        name="Subdivisions",
+        description="Number of times to subdivide an animation when exporting samples. This subdivision is made for each animation individually.",
+        default=10,
+        soft_min=2,
+    )
 
     def execute(self, context):
         # TODO Pass export parameters the proper way
-        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks, self.export_type, self.mult)
+        return export_smf(self.filepath, context, self.export_textures, self.export_nla_tracks, self.export_type, self.mult, self.subdivisions)
 
 
 def menu_func_export(self, context):

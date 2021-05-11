@@ -70,7 +70,7 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def export_smf(filepath, context, export_textures, export_nla_tracks, export_type, multiplier):
+def export_smf(filepath, context, export_textures, export_nla_tracks, export_type, multiplier, subdivisions):
     """Main entry point for SMF export"""
     # Figure out what we're going to export
     object_list = context.selected_objects
@@ -382,7 +382,6 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
             kf_end = kf_times[len(kf_times)-1]
         elif export_type == 'SPL':
             kf_times = []
-            subdivisions = 10
             for i in range(0, subdivisions+1):
                 kf_times.append(anim.frame_range[0] + (anim.frame_range[1]-anim.frame_range[0])*i/subdivisions)
             kf_end = kf_times[subdivisions]
@@ -390,7 +389,7 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
             # We shouldn't end up here
             pass
         
-        print(kf_times)
+        #print(kf_times)
         
         # Play and write animation data
         write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps)
