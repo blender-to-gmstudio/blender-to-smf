@@ -364,9 +364,9 @@ def export_smf(filepath, context, export_textures, export_nla_tracks, export_typ
     
     # Write all animations (i.e. actions)
     animation_bytes.extend(pack('B', len(animations)))
-    anim_data = rig_object.animation_data
     for anim in animations:
         # Remember state
+        anim_data = rig_object.animation_data
         action_prev = anim_data.action
         mute_prev = [False] * len(anim_data.nla_tracks)
         for i, track in enumerate(anim_data.nla_tracks):
