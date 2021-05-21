@@ -270,8 +270,12 @@ def export_smf(operator, filepath, context, export_textures, export_nla_tracks, 
         skin_indices = [None] * len(mesh.vertices)
         skin_weights = [None] * len(mesh.vertices)
         for v in mesh.vertices:
-            mod_groups = [group for group in v.groups if obj.vertex_groups[group.group].name in bone_names]
-            groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
+            mod_groups = [group for group in v.groups
+                          if obj.vertex_groups[group.group].name in bone_names]
+            # Filter all vertex group assignments with a weight of 0
+            # Also see bpy.ops.object.vertex_group_clean
+            groups = filter(lambda group: (group.weight > 0.0), mod_groups)
+            groups = sorted(groups, key=lambda group: group.weight)[0:4]
             s = sum([g.weight for g in groups])
             skin_indices[v.index] = [0,0,0,0]
             skin_weights[v.index] = [1,0,0,0]
