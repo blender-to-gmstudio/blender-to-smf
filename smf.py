@@ -261,12 +261,6 @@ def export_smf(operator, filepath, context, export_textures, export_nla_tracks, 
     no_models = len(model_list)
     model_bytes.extend(pack('B', no_models))
     for obj in model_list:
-        # OPTION 1 Clear all vertex group assignments with a weight of 0
-        # (prevent a sum of 0)
-        # Note: this might clear assignments that the user wants
-        # to keep as well!
-        #bpy.ops.object.vertex_group_clean(group_select_mode='ALL')
-
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
         mesh = obj.data.copy()
@@ -278,10 +272,10 @@ def export_smf(operator, filepath, context, export_textures, export_nla_tracks, 
         for v in mesh.vertices:
             mod_groups = [group for group in v.groups
                           if obj.vertex_groups[group.group].name in bone_names]
-            groups = sorted(mod_groups, key=lambda group: group.weight)[0:4]
-            # OPTION 2 Filter all vertex group assignments
-            # with a weight of 0 manually
-            groups = filter(lambda group: (group.weight > 0.0), groups)
+            # Filter all vertex group assignments with a weight of 0
+            # Also see bpy.ops.object.vertex_group_clean
+            groups = filter(lambda group: (group.weight > 0.0), mod_groups)
+            groups = sorted(groups, key=lambda group: group.weight)[0:4]
             s = sum([g.weight for g in groups])
             skin_indices[v.index] = [0,0,0,0]
             skin_weights[v.index] = [1,0,0,0]
