@@ -25,7 +25,7 @@ class ImportSMF(Operator, ImportHelper):
     bl_idname="import_scene.smf"
     bl_label = "SMF (*.smf)"
     bl_options = {'REGISTER'}
-    
+
     filename_ext = ".smf"
 
     filter_glob: StringProperty(
@@ -51,20 +51,20 @@ class ExportSMF(Operator, ExportHelper):
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
-    
+
     export_textures : BoolProperty(
         name="Export Textures",
         description="Whether textures should be exported with the model",
         default=True,
     )
-    
+
     # "Advanced" export settings
     export_nla_tracks : BoolProperty(
             name="Export NLA Tracks",
             description="Whether to export multiple animations on all NLA tracks that are linked to this model (Experimental)",
             default=False,
     )
-    
+
     # TODO The below ones are to be added later
     #export_nla_tracks : EnumProperty(
     #    name="Animations",
@@ -77,7 +77,7 @@ class ExportSMF(Operator, ExportHelper):
     #    ],
     #    default="CUR",
     #)
-    
+
     export_type : EnumProperty(
         name="Export Type",
         description="What to export",
@@ -87,7 +87,7 @@ class ExportSMF(Operator, ExportHelper):
         ],
         default="KFR",
     )
-    
+
     mult : IntProperty(
         name="Sample Frame Multiplier",
         description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
@@ -95,7 +95,7 @@ class ExportSMF(Operator, ExportHelper):
         soft_min=4,
         soft_max=20,
     )
-    
+
     subdivisions : IntProperty(
         name="Subdivisions",
         description="Number of times to subdivide an animation when exporting samples. This subdivision is made for each animation individually.",
@@ -118,16 +118,16 @@ def menu_func_import(self, context):
 
 def register():
     bpy.utils.register_class(ExportSMF)
-    #bpy.utils.register_class(ImportSMF)
+    bpy.utils.register_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
-    #bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
     bpy.utils.unregister_class(ExportSMF)
-    #bpy.utils.unregister_class(ImportSMF)
+    bpy.utils.unregister_class(ImportSMF)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
-    #bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 
 
 if __name__ == "__main__":

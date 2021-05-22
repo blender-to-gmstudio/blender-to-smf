@@ -598,4 +598,20 @@ def import_smf(filepath):
             shader_node = mat.node_tree.nodes["Principled BSDF"]
             mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
 
+            # Read rig info and construct armature
+            bpy.ops.object.armature_add(enter_editmode=True)
+            bpy.ops.armature.select_all(action='SELECT')
+            bpy.ops.armature.delete()           # Empty armature to begin with
+
+            bone_indices = []
+
+            node_num = unpack_from("B", data, offset = rigPos)[0]
+            item_bytesize = calcsize("ffffffffBB")
+            print("Number of nodes", node_num)
+            for node_index in range(node_num):
+                data_tuple = unpack_from("ffffffffBB", data,
+                            offset = rigPos+1 + node_index*item_bytesize)
+                print(node_index, data_tuple)
+                bpy.ops.armature.bone_primitive_add()
+
     return {'FINISHED'}
