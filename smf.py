@@ -601,9 +601,9 @@ def import_smf(filepath):
             # Read rig info and construct armature
             bpy.ops.object.armature_add(enter_editmode=True)
             bpy.ops.armature.select_all(action='SELECT')
-            bpy.ops.armature.delete()           # Empty armature to begin with
+            bpy.ops.armature.delete()   # Delete default bone
 
-            bone_indices = []
+            bone_list = []
 
             node_num = unpack_from("B", data, offset = rigPos)[0]
             item_bytesize = calcsize("ffffffffBB")
@@ -612,6 +612,25 @@ def import_smf(filepath):
                 data_tuple = unpack_from("ffffffffBB", data,
                             offset = rigPos+1 + node_index*item_bytesize)
                 print(node_index, data_tuple)
+                #print(bpy.context.object.data.edit_bones)
+                new_bone = bpy.context.object.data.edit_bones[-1:][0]
+                bone_list.append(new_bone)
+                parent_bone_index = data_tuple[8]
+                is_bone = data_tuple[9]
                 bpy.ops.armature.bone_primitive_add()
+                rot_quat = Quaternion((data_tuple[3], data_tuple[0], data_tuple[1], data_tuple[2]))
+                tr_quat = Quaternion((data_tuple[7], data_tuple[4], data_tuple[5], data_tuple[6]))
+                if bone_list and parent_bone_index >= 0:
+                    new_bone.parent = bone_list[parent_bone_index]
+                    new_bone.use_connect = is_bone
+                new_tail = Vector((2 * (tr_quat @ rot_quat.conjugated()))[1:4])
+                new_bone.tail = new_tail
+                print(new_bone.matrix, new_bone.tail[:])
+
+            for bone in bpy.context.object.data.edit_bones:
+                bpy.ops.armature.select_all(action='DESELECT')
+                bone.select = True
+                if not bone.use_connect:
+                    bpy.ops.armature.delete()
 
     return {'FINISHED'}
