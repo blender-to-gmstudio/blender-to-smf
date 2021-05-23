@@ -613,11 +613,11 @@ def import_smf(filepath):
                             offset = rigPos+1 + node_index*item_bytesize)
                 print(node_index, data_tuple)
                 #print(bpy.context.object.data.edit_bones)
-                new_bone = bpy.context.object.data.edit_bones[-1:][0]
-                bone_list.append(new_bone)
                 parent_bone_index = data_tuple[8]
                 is_bone = data_tuple[9]
                 bpy.ops.armature.bone_primitive_add()
+                new_bone = bpy.context.object.data.edit_bones[-1:][0]
+                bone_list.append(new_bone)
                 rot_quat = Quaternion((data_tuple[3], data_tuple[0], data_tuple[1], data_tuple[2]))
                 tr_quat = Quaternion((data_tuple[7], data_tuple[4], data_tuple[5], data_tuple[6]))
                 if bone_list and parent_bone_index >= 0:
@@ -627,10 +627,12 @@ def import_smf(filepath):
                 new_bone.tail = new_tail
                 print(new_bone.matrix, new_bone.tail[:])
 
+            bpy.ops.armature.select_all(action='DESELECT')
             for bone in bpy.context.object.data.edit_bones:
-                bpy.ops.armature.select_all(action='DESELECT')
-                bone.select = True
                 if not bone.use_connect:
-                    bpy.ops.armature.delete()
+                    bone.select = True
+            bpy.ops.armature.delete()       # What about the root node/bone?
+
+            
 
     return {'FINISHED'}
