@@ -602,7 +602,8 @@ def import_smf(filepath):
             node_num = unpack_from("B", data, offset = rigPos)[0]
             if node_num > 0:
                 bpy.ops.object.armature_add(enter_editmode=True)
-                armature = bpy.data.armatures[-1:]
+                armature_object = bpy.data.objects[-1:]
+                armature = armature_object.data
                 bpy.ops.armature.select_all(action='SELECT')
                 bpy.ops.armature.delete()   # Delete default bone
 
@@ -635,6 +636,14 @@ def import_smf(filepath):
                 bpy.ops.armature.delete()   # What about the root node/bone?
 
             # Read animations and add actions to the armature
-            # TODO
+            # todo
+            """
+            anim_num = unpack_from("B", data, offset = aniPos)
+            print(anim_num)
+            for anim_index in range(anim_num):
+                    anim_name = unpack_string_from(data, offset=aniPos+1)
+                    print(anim_name)
+                    #anim = bpy.data.actions.new(anim_name)"""
+
 
     return {'FINISHED'}
