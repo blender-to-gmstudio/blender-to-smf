@@ -65,18 +65,26 @@ class ExportSMF(Operator, ExportHelper):
             default=False,
     )
 
-    # TODO The below ones are to be added later
-    #export_nla_tracks : EnumProperty(
-    #    name="Animations",
-    #    description="How to export animations",
-    #    items=[
-    #        ("CUR","Current Action", "Export the Armature's current action", 0),
-    #        ("LNK","Linked NLA Actions", "Export all actions that are linked indirectly through NLA tracks", 1),
-    #        ("TRA","NLA Tracks", "Export each NLA track as a separate animation", 2),
-    #        ("SCN","Scene", "Export directly from the scene. This allows for the most advanced animations", 3),
-    #    ],
-    #    default="CUR",
-    #)
+    anim_export_mode : EnumProperty(
+        name="What to export",
+        description="How to export animations",
+        items=[
+            ("CUR","Current Action", "Export the Armature's current action as a single animation", 0),
+            ("LNK","Linked NLA Actions", "Export all (unique) actions that are linked indirectly through NLA tracks", 1),
+            ("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
+            ("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
+        ],
+        default="CUR",
+    )
+    anim_length_mode : EnumProperty(
+        name="Animation Length",
+        description="What value to use for the exported animation lengths",
+        items=[
+            ("SCN", "Scene", "Animation length equals scene length", 0),
+            ("ACT", "Action", "Animation length equals action length", 1),
+        ],
+        default="SCN",
+    )
 
     export_type : EnumProperty(
         name="Export Type",
@@ -88,7 +96,7 @@ class ExportSMF(Operator, ExportHelper):
         default="KFR",
     )
 
-    mult : IntProperty(
+    multiplier : IntProperty(
         name="Sample Frame Multiplier",
         description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
         default=4,
@@ -104,8 +112,8 @@ class ExportSMF(Operator, ExportHelper):
     )
 
     def execute(self, context):
-        # TODO Pass export parameters the proper way
-        return export_smf(self, self.filepath, context, self.export_textures, self.export_nla_tracks, self.export_type, self.mult, self.subdivisions)
+        keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
+        return export_smf(self, context, **keywords)
 
     def draw(self, context):
         # Everything gets displayed through the panels that are defined below
@@ -156,9 +164,15 @@ class SMF_PT_export_advanced(bpy.types.Panel):
         operator = sfile.active_operator
 
         layout.prop(operator, 'export_nla_tracks')
+        layout.label(text="General")
+        layout.prop(operator, 'anim_export_mode')
+        layout.prop(operator, 'anim_length_mode')
+
+        layout.label(text="Specifics")
         layout.prop(operator, 'export_type')
         layout.prop(operator, 'mult')
-        layout.prop(operator, 'subdivisions')
+        if operator.export_type == 'SPL':
+            layout.prop(operator, 'subdivisions')
 
 def menu_func_export(self, context):
     self.layout.operator(ExportSMF.bl_idname, text="SMF (*.smf)")
