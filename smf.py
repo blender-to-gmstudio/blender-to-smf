@@ -20,7 +20,7 @@ def prep_mesh(obj, obj_rig, mesh):
     bm.from_mesh(mesh)
 
     # This makes sure the mesh is in the rig's coordinate system
-    if obj_rig != None and obj.parent == obj_rig:
+    if obj_rig and obj.parent == obj_rig:
         bmesh.ops.transform(bm,
             matrix=obj_rig.matrix_world,
             space=obj.matrix_world,
