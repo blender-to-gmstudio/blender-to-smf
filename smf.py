@@ -269,14 +269,36 @@ def export_smf(operator, context,
             print(debug_vals[i])
 
     # Write models
+    dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
     model_bytes = bytearray()
     no_models = len(model_list)
     model_bytes.extend(pack('B', no_models))
     for obj in model_list:
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
-        mesh = obj.data.copy()
+
+        # The old way of doing things, doesn't apply modifiers at all
+        #mesh = obj.data.copy()
+        #prep_mesh(obj, rig_object, mesh)
+
+        # First, see if this mesh object has an Armature modifier set
+        # Set to rest pose if that's the case
+        # TODO What else needs to be done here for this to work flawlessly?
+        mods = [mod for mod in obj.modifiers if mod.type == "ARMATURE"]
+        arma = None
+        if mods and mods[0].object:
+                arma = mods[0].object.data
+                arma_prev_position = arma.pose_position
+                arma.pose_position = 'REST'
+
+        # The new way of doing things using the context depsgraph
+        obj_eval = obj.evaluated_get(dg)
+        mesh = bpy.data.meshes.new_from_object(obj_eval)
         prep_mesh(obj, rig_object, mesh)
+
+        # Reset pose_position setting
+        if arma:
+            arma.pose_position = arma_prev_position
 
         # Precalculate skinning info
         skin_indices = [None] * len(mesh.vertices)
