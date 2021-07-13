@@ -535,20 +535,15 @@ def import_smf(filepath):
         print(versionNum)
 
         if int(versionNum) == 7:
-            texPos = unpack_from("I", data, offset=18+4)[0]
-            matPos = unpack_from("I", data, offset=18+4+4)[0]
-            modPos = unpack_from("I", data, offset=18+4+4+4)[0]
-            nodPos = unpack_from("I", data, offset=18+4+4+4+4)[0]
-            colPos = unpack_from("I", data, offset=18+4+4+4+4+4)[0]
-            rigPos = unpack_from("I", data, offset=18+4+4+4+4+4+4)[0]
-            aniPos = unpack_from("I", data, offset=18+4+4+4+4+4+4+4)[0]
-            selPos = unpack_from("I", data, offset=18+4+4+4+4+4+4+4+4)[0]
-            subPos = unpack_from("I", data, offset=18+4+4+4+4+4+4+4+4+4)[0]
-            placeholder = unpack_from("I", data, offset = 18+4+4+4+4+4+4+4+4+4+4)[0]
-            modelNum = unpack_from("B", data, offset = 18+4+4+4+4+4+4+4+4+4+4+4)[0]
+            texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos, placeholder = unpack_from(
+                "I"*10,
+                data,
+                offset=18+4,
+            )
+            modelNum = unpack_from("B", data, offset = 62)[0]
             print(texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos)
             print(placeholder)
-            print(modelNum)
+            print("Number of models:", modelNum)
 
             img = None
 
@@ -573,64 +568,83 @@ def import_smf(filepath):
                     img = bpy.data.images[name]
                 else:
                     # No image with this name exists, add a new one
-                    img = bpy.data.images.new(name=name, width=dimensions[0], height=dimensions[1])
+                    img = bpy.data.images.new(
+                        name=name,
+                        width=dimensions[0],
+                        height=dimensions[1],
+                    )
                     for i in range(0, dimensions[0]*dimensions[1]):
                          rgba = data[offset+i*4:offset+i*4+4]
                          rgba = [co/255 for co in rgba]
                          img.pixels[i*4:i*4+4] = rgba[:]
 
             # Read model data
-            size = unpack_from("I", data, offset=modPos)[0]
-            pos = modPos + 4
-            print(size)
-            no_faces = int(size/3 / SMF_format_size)
-            print(no_faces)
+            # Create a new Blender 'MESH' type object for every SMF model
+            print("Read model data...")
+            dataPos = modPos
+            for model_index in range(modelNum):
+                size = unpack_from("I", data, offset=dataPos)[0]
+                pos = dataPos + 4
+                print(size)
+                no_faces = int(size/3 / SMF_format_size)
+                print(no_faces)
 
-            bm = bmesh.new()
-            uv_layer = bm.loops.layers.uv.verify()
-            for i in range(no_faces):
-                v = []
-                uvs = []
-                for j in range(3):
-                    v_data = SMF_format_struct.unpack_from(data, pos)
-                    pos = pos + SMF_format_struct.size
-                    co = v_data[0:3]
-                    nml = v_data[3:6]
-                    uv = v_data[6:8]
-                    tan = v_data[8:11]
-                    indices = v_data[11:15]
-                    weights = v_data[15:19]
-                    #print(pos, co, nml, uv, tan, indices, weights)
-                    v.append(bm.verts.new(co))
-                    uvs.append(uv)
-                face = bm.faces.new(v)
+                bm = bmesh.new()
+                uv_layer = bm.loops.layers.uv.verify()
+                for i in range(no_faces):
+                    v = []
+                    uvs = []
+                    for j in range(3):
+                        v_data = SMF_format_struct.unpack_from(data, pos)
+                        pos = pos + SMF_format_struct.size
+                        co = v_data[0:3]
+                        nml = v_data[3:6]
+                        uv = v_data[6:8]
+                        tan = v_data[8:11]
+                        indices = v_data[11:15]
+                        weights = v_data[15:19]
+                        #print(pos, co, nml, uv, tan, indices, weights)
+                        v.append(bm.verts.new(co))
+                        uvs.append(uv)
+                    face = bm.faces.new(v)
 
-                for i in range(len(face.loops)):
-                    face.loops[i][uv_layer].uv = uvs[i]
+                    for i in range(len(face.loops)):
+                        face.loops[i][uv_layer].uv = uvs[i]
 
-            mesh = bpy.data.meshes.new("ImportedFromSMF")
-            bm.to_mesh(mesh)
+                # TODO Use filename without ext here
+                mesh = bpy.data.meshes.new("ImportedFromSMF" + str(modelNum))
+                bm.to_mesh(mesh)
 
-            matName = unpack_string_from(data, offset=pos)
-            pos = pos + len(matName) + 1
-            texName = unpack_string_from(data, offset=pos)
-            pos = pos + len(texName) + 1
-            print(matName, texName)
+                matName = unpack_string_from(data, offset=pos)
+                pos = pos + len(matName) + 1
+                texName = unpack_string_from(data, offset=pos)
+                pos = pos + len(texName) + 1
+                print(matName, texName)
 
-            bpy.ops.object.add(type="MESH")
-            new_obj = bpy.context.active_object
-            new_obj.data = mesh
+                visible = unpack_from("B", data, offset=pos)[0]
+                pos += 1
+                skinning_info = unpack_from("II", data, offset=pos)[0]
+                # if != 0 ??
+                pos += 2*4
 
-            bpy.ops.object.material_slot_add()
-            bpy.ops.material.new()
-            mat = bpy.data.materials[len(bpy.data.materials)-1]
-            mat.name = matName
-            new_obj.material_slots[0].material = mat
-            mat.node_tree.nodes.new(type="ShaderNodeTexImage") # This is the bl_rna identifier, NOT the type!
-            image_node = mat.node_tree.nodes['Image Texture']
-            image_node.image = img
-            shader_node = mat.node_tree.nodes["Principled BSDF"]
-            mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
+
+                bpy.ops.object.add(type="MESH")
+                new_obj = bpy.context.active_object
+                new_obj.data = mesh
+
+                bpy.ops.object.material_slot_add()
+                bpy.ops.material.new()
+                mat = bpy.data.materials[len(bpy.data.materials)-1]
+                mat.name = matName
+                new_obj.material_slots[0].material = mat
+                mat.node_tree.nodes.new(type="ShaderNodeTexImage") # This is the bl_rna identifier, NOT the type!
+                image_node = mat.node_tree.nodes['Image Texture']
+                image_node.image = img
+                shader_node = mat.node_tree.nodes["Principled BSDF"]
+                mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
+
+                # Advance to next model
+                dataPos = pos
 
             # Read rig info and construct armature
             node_num = unpack_from("B", data, offset = rigPos)[0]

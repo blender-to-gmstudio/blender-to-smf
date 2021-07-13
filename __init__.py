@@ -186,7 +186,7 @@ classes = (
     SMF_PT_export_general,
     SMF_PT_export_advanced,
     ExportSMF,
-    #ImportSMF,
+    ImportSMF,  # Uncomment this to enable the WIP importer
 )
 
 def register():
