@@ -5,6 +5,7 @@ import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
+from os import path
 
 SMF_version = 10
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
@@ -520,6 +521,8 @@ def unpack_string_from(data, offset=0):
 def import_smf(filepath):
     """Main entry point for SMF import"""
     import bmesh
+    modName = path.basename(filepath)
+    print("Model file: " + str(modName))
 
     data = bytearray()
     with open(filepath, 'rb') as file:
@@ -612,7 +615,7 @@ def import_smf(filepath):
                         face.loops[i][uv_layer].uv = uvs[i]
 
                 # TODO Use filename without ext here
-                mesh = bpy.data.meshes.new("ImportedFromSMF" + str(modelNum))
+                mesh = bpy.data.meshes.new(modName)
                 bm.to_mesh(mesh)
 
                 matName = unpack_string_from(data, offset=pos)
@@ -624,12 +627,13 @@ def import_smf(filepath):
                 visible = unpack_from("B", data, offset=pos)[0]
                 pos += 1
                 skinning_info = unpack_from("II", data, offset=pos)[0]
-                # if != 0 ??
+                # if != (0, 0) ??
                 pos += 2*4
 
 
                 bpy.ops.object.add(type="MESH")
                 new_obj = bpy.context.active_object
+                new_obj.name = mesh.name    # Let Blender handle the number suffix
                 new_obj.data = mesh
 
                 bpy.ops.object.material_slot_add()
