@@ -17,7 +17,7 @@ from .smf import export_smf, import_smf
 # invoke() function which calls the file selector.
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator
 
 class ImportSMF(Operator, ImportHelper):
@@ -111,6 +111,13 @@ class ExportSMF(Operator, ExportHelper):
         soft_min=2,
     )
 
+    scale: FloatProperty(
+        name="Scale",
+        description="Scale factor to be applied to geometry and rig",
+        default=1,
+        soft_min=.1,
+    )
+
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf(self, context, **keywords)
@@ -173,6 +180,9 @@ class SMF_PT_export_advanced(bpy.types.Panel):
         layout.prop(operator, 'mult')
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
+
+        #layout.label(text="Other")
+        #layout.prop(operator, "scale")
 
 def menu_func_export(self, context):
     self.layout.operator(ExportSMF.bl_idname, text="SMF (*.smf)")
