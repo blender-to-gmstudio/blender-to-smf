@@ -94,7 +94,7 @@ def export_smf(operator, context,
     rig = None
     anim = None
     animations = set()
-    if len(armature_list) > 0:
+    if armature_list:
         rig_object = armature_list[0]
         rig = rig_object.data
         anim_data = rig_object.animation_data
@@ -120,7 +120,7 @@ def export_smf(operator, context,
     unique_materials = {slot.material
                         for obj in model_list
                         for slot in obj.material_slots
-                        if slot.material != None}
+                        if slot.material}
 
     unique_images = {}
     if export_textures:
@@ -193,7 +193,7 @@ def export_smf(operator, context,
 
     if not rig:
         # No (valid) armature for export
-        rig_bytes.extend(pack('B',0))
+        rig_bytes.extend(pack('B', 0))
     else:
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
