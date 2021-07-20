@@ -28,6 +28,13 @@ def prep_mesh(obj, obj_rig, mesh):
             verts=bm.verts[:]
             )
 
+    # Also apply our own world transform
+    bmesh.ops.transform(bm,
+        matrix=obj.matrix_world,
+        space=Matrix(),
+        verts = bm.verts[:]
+        )
+
     geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     # See https://blender.stackexchange.com/a/122321
     bmesh.ops.mirror(bm,
@@ -79,13 +86,15 @@ def export_smf(operator, context,
                anim_export_mode,
                anim_length_mode,
                multiplier,
-               subdivisions
+               subdivisions,
+               **kwargs,
                ):
     """
     Main entry point for SMF export
     """
 
     # Figure out what we're going to export
+    # TODO Extend this to 'MESH'-like objects? (text, curves, surfaces, ...)
     object_list = context.selected_objects
     model_list = [o for o in object_list if o.type=='MESH']
     armature_list = [o for o in object_list if o.type=='ARMATURE']
@@ -129,7 +138,7 @@ def export_smf(operator, context,
                 continue
 
             output_node_list = [node for node in mat.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
-            if len(output_node_list) == 0:
+            if not output_node_list:
                 continue
 
             node = output_node_list[0]
