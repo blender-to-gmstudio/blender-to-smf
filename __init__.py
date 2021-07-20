@@ -41,7 +41,7 @@ class ExportSMF(Operator, ExportHelper):
     """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
     bl_idname = "export_scene.smf"
     bl_label = "SMF (*.smf)"
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'PRESET'}
 
     # ExportHelper mixin class uses this
     filename_ext = ".smf"
