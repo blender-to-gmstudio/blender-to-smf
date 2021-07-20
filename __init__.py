@@ -177,7 +177,7 @@ class SMF_PT_export_advanced(bpy.types.Panel):
 
         layout.label(text="Specifics")
         layout.prop(operator, 'export_type')
-        layout.prop(operator, 'mult')
+        layout.prop(operator, 'multiplier')
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
 
