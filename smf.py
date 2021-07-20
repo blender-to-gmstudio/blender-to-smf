@@ -13,6 +13,9 @@ SMF_format_size = SMF_format_struct.size
 
 ### EXPORT ###
 
+# Mesh-like objects (the ones that can be converted to mesh)
+meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
+
 def prep_mesh(obj, obj_rig, mesh):
     """Triangulate the given mesh using the BMesh library"""
     import bmesh
@@ -96,7 +99,8 @@ def export_smf(operator, context,
     # Figure out what we're going to export
     # TODO Extend this to 'MESH'-like objects? (text, curves, surfaces, ...)
     object_list = context.selected_objects
-    model_list = [o for o in object_list if o.type=='MESH']
+    #model_list = [o for o in object_list if o.type=='MESH']
+    model_list = [o for o in object_list if o.type in meshlike_types]
     armature_list = [o for o in object_list if o.type=='ARMATURE']
 
     rig_object = None
@@ -302,6 +306,9 @@ def export_smf(operator, context,
                 arma.pose_position = 'REST'
 
         # The new way of doing things using the context depsgraph
+        # Get an evaluated version of the current object
+        # This includes modifiers, etc.
+        # The world transform is not applied to the mesh
         obj_eval = obj.evaluated_get(dg)
         mesh = bpy.data.meshes.new_from_object(obj_eval)
         prep_mesh(obj, rig_object, mesh)
@@ -431,6 +438,22 @@ def export_smf(operator, context,
     fps = render.fps/render.fps_base
 
     # Write all animations (i.e. actions)
+    # TODO
+    """
+    if a:
+        # Current action
+        pass
+    elif b:
+        # NLA tracks
+        pass
+    elif c:
+        # Linked actions
+        pass
+    else:
+        # Full NLA animation
+        pass
+    """
+
     animation_bytes.extend(pack('B', len(animations)))
     for anim in animations:
         # Remember state
