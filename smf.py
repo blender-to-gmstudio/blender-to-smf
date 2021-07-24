@@ -84,7 +84,6 @@ def smf_bindmap(bones):
 def export_smf(operator, context,
                filepath,
                export_textures,
-               export_nla_tracks,
                export_type,
                anim_export_mode,
                anim_length_mode,
@@ -97,7 +96,6 @@ def export_smf(operator, context,
     """
 
     # Figure out what we're going to export
-    # TODO Extend this to 'MESH'-like objects? (text, curves, surfaces, ...)
     object_list = context.selected_objects
     #model_list = [o for o in object_list if o.type=='MESH']
     model_list = [o for o in object_list if o.type in meshlike_types]
@@ -112,15 +110,25 @@ def export_smf(operator, context,
         rig = rig_object.data
         anim_data = rig_object.animation_data
         if anim_data:
-            if export_nla_tracks:
+            if anim_export_mode == 'LNK':
+                # Unique actions linked to NLA tracks
                 tracks = anim_data.nla_tracks
                 if tracks:
                     for track in tracks:
                         for strip in track.strips:
                             animations.add(strip.action)
-            else:
+            elif anim_export_mode == 'CUR':
+                # Currently assigned action
                 if anim_data.action:
                     animations.add(anim_data.action)
+            elif anim_export_mode == 'TRA':
+                # Every track separately
+                pass
+            elif anim_export_mode == 'SCN':
+                # Final result of NLA tracks on scene
+                pass
+            else:
+                pass
 
     # Initalize variables that we need across chunks
     bindmap = {}
@@ -186,7 +194,7 @@ def export_smf(operator, context,
             texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
             texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
 
-            print(img.name, img.size[:])
+            #print(img.name, img.size[:])
 
             for cpo in img.size:
                 if floor(log2(cpo)) != log2(cpo):
@@ -439,20 +447,26 @@ def export_smf(operator, context,
 
     # Write all animations (i.e. actions)
     # TODO
-    """
-    if a:
+    if anim_export_mode == 'CUR':
         # Current action
+        # Loop through current action's values
+        # Use action length to determine number of frames
         pass
-    elif b:
-        # NLA tracks
-        pass
-    elif c:
+    elif anim_export_mode == 'LNK':
         # Linked actions
+        # Find all unique actions and export them same as in "current" setting
+        pass
+    elif anim_export_mode == 'TRA':
+        # NLA tracks
+        #
+        pass
+    elif anim_export_mode == 'SCN':
+        # Full NLA animation
+        # Use current scene, leave NLA track mutes/solos as is
         pass
     else:
-        # Full NLA animation
+        # Invalid option
         pass
-    """
 
     animation_bytes.extend(pack('B', len(animations)))
     for anim in animations:

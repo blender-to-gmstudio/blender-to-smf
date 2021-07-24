@@ -59,12 +59,6 @@ class ExportSMF(Operator, ExportHelper):
     )
 
     # "Advanced" export settings
-    export_nla_tracks : BoolProperty(
-            name="Export NLA Tracks",
-            description="Whether to export multiple animations on all NLA tracks that are linked to this model (Experimental)",
-            default=False,
-    )
-
     anim_export_mode : EnumProperty(
         name="What to export",
         description="How to export animations",
@@ -170,7 +164,6 @@ class SMF_PT_export_advanced(bpy.types.Panel):
         sfile = context.space_data
         operator = sfile.active_operator
 
-        layout.prop(operator, 'export_nla_tracks')
         layout.label(text="General")
         layout.prop(operator, 'anim_export_mode')
         layout.prop(operator, 'anim_length_mode')
