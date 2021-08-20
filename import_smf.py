@@ -1,0 +1,747 @@
+# SMF export scripts for Blender
+#
+#from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
+import bpy
+from struct import Struct, pack, calcsize
+from mathutils import *
+from math import *
+from os import path
+
+SMF_version = 10
+SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
+SMF_format_size = SMF_format_struct.size
+
+### EXPORT ###
+
+# Mesh-like objects (the ones that can be converted to mesh)
+meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
+
+def prep_mesh(obj, obj_rig, mesh):
+    """Triangulate the given mesh using the BMesh library"""
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    # This makes sure the mesh is in the rig's coordinate system
+    if obj_rig and obj.parent == obj_rig:
+        bmesh.ops.transform(bm,
+            matrix=obj_rig.matrix_world,
+            space=obj.matrix_world,
+            verts=bm.verts[:]
+            )
+
+    # Also apply our own world transform
+    bmesh.ops.transform(bm,
+        matrix=obj.matrix_world,
+        space=Matrix(),
+        verts = bm.verts[:]
+        )
+
+    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
+    # See https://blender.stackexchange.com/a/122321
+    bmesh.ops.mirror(bm,
+        geom=geom_orig,
+        axis='Y',
+        merge_dist=-1
+    )
+    bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
+    bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+
+    # Triangulate the mesh
+    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
+
+    bm.to_mesh(mesh)
+    bm.free()
+
+def smf_node_list(armature_object):
+    """Construct the SMF node list from the given Armature object"""
+    # TODO Insert root node (optional?)
+    armature = armature_object.data
+    bones = [bone for bone in armature.bones]
+    bones_orig = bones.copy()
+    for bone in bones_orig:
+        if bone.parent and not bone.use_connect:
+            pos = bones.index(bone)
+            bones.insert(pos, None)
+    return bones
+
+def smf_bindmap(bones):
+    """Construct the SMF bindmap from the given list of Blender bones"""
+    # Create the bindmap (i.e. which bones get sent to the shader in SMF)
+    # See smf_rig.update_bindmap (we only need the bindmap part here!)
+    # Only consider Blender bones that map to SMF bones
+    # Every SMF node that has a parent and is attached to it, represents a bone
+    # (the detached nodes represent the heads of bones)
+    smf_bones = [b for b in bones if b and b.parent]
+    bindmap = {}
+    sample_bone_ind = 0
+    for node in smf_bones:
+        bindmap[node.name] = sample_bone_ind
+        sample_bone_ind = sample_bone_ind + 1
+    return bindmap
+
+def export_smf(operator, context,
+               filepath,
+               export_textures,
+               export_type,
+               anim_export_mode,
+               anim_length_mode,
+               multiplier,
+               subdivisions,
+               **kwargs,
+               ):
+    """
+    Main entry point for SMF export
+    """
+
+    # Figure out what we're going to export
+    object_list = context.selected_objects
+    #model_list = [o for o in object_list if o.type=='MESH']
+    model_list = [o for o in object_list if o.type in meshlike_types]
+    armature_list = [o for o in object_list if o.type=='ARMATURE']
+
+    rig_object = None
+    rig = None
+    anim = None
+    animations = set()
+    if armature_list:
+        rig_object = armature_list[0]
+        rig = rig_object.data
+        anim_data = rig_object.animation_data
+        if anim_data:
+            if anim_export_mode == 'LNK':
+                # Unique actions linked to NLA tracks
+                tracks = anim_data.nla_tracks
+                if tracks:
+                    for track in tracks:
+                        for strip in track.strips:
+                            animations.add(strip.action)
+            elif anim_export_mode == 'CUR':
+                # Currently assigned action
+                if anim_data.action:
+                    animations.add(anim_data.action)
+            elif anim_export_mode == 'TRA':
+                # Every track separately
+                pass
+            elif anim_export_mode == 'SCN':
+                # Final result of NLA tracks on scene
+                pass
+            else:
+                pass
+
+    # Initalize variables that we need across chunks
+    bindmap = {}
+    bone_names = []
+
+    texture_bytes = bytearray()
+
+    # Write textures and their image data (same thing as seen from SMF)
+    # Get unique images and keep their reference to the material that uses them
+    unique_materials = {slot.material
+                        for obj in model_list
+                        for slot in obj.material_slots
+                        if slot.material}
+
+    unique_images = {}
+    if export_textures:
+        for mat in unique_materials:
+            if not mat.use_nodes:
+                continue
+
+            output_node_list = [node for node in mat.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
+            if not output_node_list:
+                continue
+
+            node = output_node_list[0]
+            if not node.inputs['Surface'].is_linked:
+                continue
+
+            node = node.inputs['Surface'].links[0].from_node
+            if node.type == 'TEX_IMAGE' and node.image:
+                # Directly connected texture image node with image set
+                if node.image.has_data:
+                    unique_images[mat.name] = node.image
+                else:
+                    operator.report({'WARNING'}, (
+                    "Image " + node.image.name + " "
+                    "has no data loaded. Using default texture instead."
+                    ))
+            else:
+                # Look a bit further
+                # Try to generalize a bit by assuming texture input is at index 0
+                # (color/texture inputs seem to connect to input 0 for all shaders)
+                if not node.inputs[0].is_linked:
+                    continue
+
+                node = node.inputs[0].links[0].from_node
+                if node.type == 'TEX_IMAGE' and node.image:
+                    #if not(0 in node.image.size):
+                    if node.image.has_data:
+                        unique_images[mat.name] = node.image
+                    else:
+                        operator.report({'WARNING'}, (
+                        "Image " + node.image.name + " "
+                        "has no data loaded. Using default texture instead."
+                        ))
+
+        texture_bytes.extend(pack('B', len(unique_images)))            # Number of unique images
+        for img in unique_images.values():
+            channels, item_number = img.channels, len(img.pixels)
+            pixel_number = int(item_number/channels)
+            pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
+
+            texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
+            texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
+
+            #print(img.name, img.size[:])
+
+            for cpo in img.size:
+                if floor(log2(cpo)) != log2(cpo):
+                    operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
+
+            bytedata = [floor(component*255) for component in pixel_data]
+            texture_bytes.extend(pack('B'*item_number,*bytedata))
+    else:
+        texture_bytes.extend(pack('B', len(unique_images)))
+
+    # Write an empty chunk for materials
+    material_bytes = bytearray()
+    material_bytes.extend(pack('B', len(unique_materials)))
+
+    # Write rig
+    rig_bytes = bytearray()
+
+    if not rig:
+        # No (valid) armature for export
+        rig_bytes.extend(pack('B', 0))
+    else:
+        # Construct node list for SMF
+        # (heads of disconnected bones need to become nodes, too)
+        bones = smf_node_list(rig_object)
+
+        # Get the bindmap and relevant bone names
+        bindmap = smf_bindmap(bones)
+        bone_names = bindmap.keys()
+
+        rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
+
+        if len(rig.bones) == 0:
+            #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
+            pass
+
+        print("RIG")
+        print("---")
+        debug_rig = []
+        debug_vals = []
+        # Make sure to have a root bone!
+        for n, bone in enumerate(bones):
+            if bone:
+                # This bone exists in the Blender rig
+                b = bone
+
+                parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+                connected = b.use_connect
+
+                if b.parent and not b.use_connect:
+                #if not b.use_connect:
+                    # This is a node for which an added node has been written
+                    parent_bone_index = n-1
+                    connected = True
+                    bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
+
+                matrix = b.matrix_local.copy()
+                matrix.translation = b.tail_local[:]
+
+                name = b.name
+            else:
+                # This is one of the inserted nodes
+                b = bones[n+1]
+
+                parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+                connected = b.use_connect
+
+                matrix = b.matrix_local.copy()
+                matrix.translation = b.head_local[:]
+
+                name = "Inserted for " + b.name
+
+            # Add the world transform to the nodes, ignore scale
+            mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
+
+            # Construct a list containing matrix values in the right order
+            vals = [j for i in mat_w.col for j in i]
+
+            rig_bytes.extend(pack('f'*16, *vals))
+            rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+            rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
+            rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
+            rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+
+            t = mat_w.translation
+            debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
+            debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
+
+        # Print some extended, readable debug info
+        print("SMF Node List")
+        print("-------------")
+        for i, d in enumerate(debug_rig):
+            s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<40} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
+            print(s)
+            print(debug_vals[i])
+
+    # Write models
+    dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
+    model_bytes = bytearray()
+    no_models = len(model_list)
+    model_bytes.extend(pack('B', no_models))
+    for obj in model_list:
+        # Create a triangulated copy of the mesh
+        # that has everything applied (modifiers, transforms, etc.)
+
+        # The old way of doing things, doesn't apply modifiers at all
+        #mesh = obj.data.copy()
+        #prep_mesh(obj, rig_object, mesh)
+
+        # First, see if this mesh object has an Armature modifier set
+        # Set to rest pose if that's the case
+        # TODO What else needs to be done here for this to work flawlessly?
+        mods = [mod for mod in obj.modifiers if mod.type == "ARMATURE"]
+        arma = None
+        if mods and mods[0].object:
+                arma = mods[0].object.data
+                arma_prev_position = arma.pose_position
+                arma.pose_position = 'REST'
+
+        # The new way of doing things using the context depsgraph
+        # Get an evaluated version of the current object
+        # This includes modifiers, etc.
+        # The world transform is not applied to the mesh
+        obj_eval = obj.evaluated_get(dg)
+        mesh = bpy.data.meshes.new_from_object(obj_eval)
+        prep_mesh(obj, rig_object, mesh)
+
+        # Reset pose_position setting
+        if arma:
+            arma.pose_position = arma_prev_position
+
+        # Precalculate skinning info
+        skin_indices = [None] * len(mesh.vertices)
+        skin_weights = [None] * len(mesh.vertices)
+        for v in mesh.vertices:
+            mod_groups = [group for group in v.groups
+                          if obj.vertex_groups[group.group].name in bone_names]
+            # Filter all vertex group assignments with a weight of 0
+            # Also see bpy.ops.object.vertex_group_clean
+            groups = filter(lambda group: (group.weight > 0.0), mod_groups)
+            groups = sorted(groups, key=lambda group: group.weight)[0:4]
+            s = sum([g.weight for g in groups])
+            skin_indices[v.index] = [0,0,0,0]
+            skin_weights[v.index] = [1,0,0,0]
+            for index, group in enumerate(groups):              # 4 bone weights max!
+                vg_index = group.group                          # Index of the vertex group
+                vg_name = obj.vertex_groups[vg_index].name      # Name of the vertex group
+                w = group.weight/s*255
+                skin_indices[v.index][index] = bindmap[vg_name]
+                skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+
+        # Write vertex buffer contents
+        size = len(mesh.loops) * SMF_format_struct.size
+        model_bytes.extend(pack('I', size))
+        uv_data = mesh.uv_layers.active.data
+        for face in mesh.polygons:
+            for loop in [mesh.loops[i] for i in face.loop_indices]:
+                vertex_data = []
+
+                vert = mesh.vertices[loop.vertex_index]
+                normal_source = vert                              # One of vert, loop, face
+                normal = normal_source.normal
+                uv = uv_data[loop.index].uv
+                tan_int = [*(int(c*255) for c in loop.tangent), 0]
+
+                vertex_data.extend(vert.co)
+                vertex_data.extend(vert.normal)
+                vertex_data.extend(uv)
+                vertex_data.extend(tan_int)
+                vertex_data.extend(skin_indices[vert.index])
+                vertex_data.extend(skin_weights[vert.index])
+
+                vertex_bytedata = SMF_format_struct.pack(*vertex_data)
+                model_bytes.extend(vertex_bytedata)
+
+        # Mat and tex name
+        mat_name = ""
+        tex_name = ""
+        if len(obj.material_slots) > 0:
+            slot = obj.material_slots[0]
+            if slot.material:
+                mat = slot.material
+                mat_name = mat.name
+                if export_textures and mat_name in unique_images:
+                    tex_name = unique_images[mat_name].name
+
+        model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
+        model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
+
+        # Visible
+        model_bytes.extend(pack('B',int(not obj.hide_viewport)))
+
+        # Delete triangulated copy of the mesh
+        bpy.data.meshes.remove(mesh)
+
+    # Write animations
+    animation_bytes = bytearray()
+
+    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps):
+        """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
+        frame_number = len(keyframe_times)
+        animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
+        animation_bytes.extend(pack('B', True))                     # loop
+        animation_bytes.extend(pack('f', frame_max/fps*1000))       # playTime (ms)
+        animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
+        animation_bytes.extend(pack('B', multiplier))               # sampleFrameMultiplier
+        animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
+
+        # PRE Skeleton must be in Pose Position (see Armature.pose_position)
+        frame_prev = scene.frame_current
+        for kf_time in keyframe_times:
+            subframe, frame = modf(kf_time)
+            scene.frame_set(frame, subframe=subframe)
+
+            smf_kf_time = kf_time/frame_max
+
+            byte_data.extend(pack('f', smf_kf_time))
+
+            print("Blender frame ", kf_time, " at SMF time ", smf_kf_time)
+
+            # Loop through the armature's PoseBones using the bone/node order we got earlier
+            # This guarantees a correct mapping of PoseBones to Bones
+            #for rbone in rig_object.data.bones:
+            for rbone in bones:
+                if rbone:
+                    # Get the bone (The name is identical (!))
+                    bone = rig_object.pose.bones[rbone.name]
+
+                    # Use bone matrix
+                    mat = bone.matrix.copy()
+                else:
+                    # Use an identity matrix (i.e. no change)
+                    mat = Matrix()
+
+                mat.translation = bone.tail[:]
+                mat_final = apply_world_matrix(mat, rig_object.matrix_world)
+                vals = [j for i in mat_final.col for j in i]
+                byte_data.extend(pack('f'*16, *vals))
+
+        # Restore frame position
+        scene.frame_set(frame_prev)
+
+    # Export each NLA track linked to the armature object as an animation
+    # (use the first action's name as the animation name for now)
+    print("ANIMATION")
+    print("---------")
+
+    # Common variables
+    render = context.scene.render
+    fps = render.fps/render.fps_base
+
+    # Write all animations (i.e. actions)
+    # TODO
+    if anim_export_mode == 'CUR':
+        # Current action
+        # Loop through current action's values
+        # Use action length to determine number of frames
+        pass
+    elif anim_export_mode == 'LNK':
+        # Linked actions
+        # Find all unique actions and export them same as in "current" setting
+        pass
+    elif anim_export_mode == 'TRA':
+        # NLA tracks
+        #
+        pass
+    elif anim_export_mode == 'SCN':
+        # Full NLA animation
+        # Use current scene, leave NLA track mutes/solos as is
+        pass
+    else:
+        # Invalid option
+        pass
+
+    animation_bytes.extend(pack('B', len(animations)))
+    for anim in animations:
+        # Remember state
+        anim_data = rig_object.animation_data
+        action_prev = anim_data.action
+        mute_prev = [False] * len(anim_data.nla_tracks)
+        for i, track in enumerate(anim_data.nla_tracks):
+            mute_prev[i] = track.mute
+            track.mute = True
+
+        # Set animation (i.e. action)
+        anim_data.action = anim
+
+        # Determine keyframe times
+        if   export_type == 'KFR':
+            kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
+            kf_end = kf_times[len(kf_times)-1]
+        elif export_type == 'SPL':
+            kf_times = []
+            for i in range(0, subdivisions+1):
+                kf_times.append(anim.frame_range[0] + (anim.frame_range[1]-anim.frame_range[0])*i/subdivisions)
+            kf_end = kf_times[subdivisions]
+        else:
+            # We shouldn't end up here
+            pass
+
+        #print(kf_times)
+
+        # Play and write animation data
+        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps)
+
+        # Restore to previous state
+        rig_object.animation_data.action = action_prev
+        for i, track in enumerate(rig_object.animation_data.nla_tracks):
+            track.mute = mute_prev[i]
+
+    # Now build header
+    header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
+
+    tex_pos = len(header_bytes) + calcsize('IIIIII')
+    mat_pos = tex_pos + len(texture_bytes)
+    mod_pos = mat_pos + len(material_bytes)
+    rig_pos = mod_pos + len(model_bytes)
+    ani_pos = rig_pos + len(rig_bytes)
+    offsets = (tex_pos, mat_pos, mod_pos, rig_pos, ani_pos)
+    header_bytes.extend(pack('IIIII', *offsets))
+
+    placeholder_byte = 0
+    header_bytes.extend(pack('I', placeholder_byte))
+
+    # Write everything to file
+    with open(filepath, "wb") as file:
+        file.write(header_bytes)
+        file.write(texture_bytes)
+        file.write(material_bytes)
+        file.write(model_bytes)
+        file.write(rig_bytes)
+        file.write(animation_bytes)
+
+    return {'FINISHED'}
+
+def apply_world_matrix(matrix, matrix_world):
+    """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
+    mat_w = matrix_world.copy()
+    mat_w @= matrix
+
+    # Decompose to get rid of scale
+    deco = mat_w.decompose()
+    mat_rot = deco[1].to_matrix()
+
+    # Swap columns for use with SMF
+    # Also add the translation
+    temp = mat_rot.col[0][:]
+    mat_rot.col[0] = mat_rot.col[1][:]
+    mat_rot.col[1] = temp
+    mat_w = mat_rot.to_4x4()
+    mat_w.translation = deco[0][:]
+
+    # Invert y values of the vectors
+    # (i.e. mirror along Y to convert to SMF's left handed system)
+    mat_w.row[1] *= -1
+
+    return mat_w
+
+### IMPORT ###
+
+from struct import unpack, unpack_from
+
+def unpack_string_from(data, offset=0):
+    """Unpacks a zero terminated string from the given offset in the data"""
+    result = ""
+    while data[offset] != 0:
+        result += chr(data[offset])
+        offset += 1
+    return result
+
+def import_smf(filepath):
+    """Main entry point for SMF import"""
+    import bmesh
+    modName = path.basename(filepath)
+    print("Model file: " + str(modName))
+
+    data = bytearray()
+    with open(filepath, 'rb') as file:
+        data = file.read()
+
+    header_bytes = unpack_from("17s", data)[0]
+    header_text = "".join([chr(b) for b in header_bytes])
+    #print(header_text)
+
+    if header_text == "SnidrsModelFormat":
+        # Valid SMF v7 file
+        versionNum = unpack_from("f", data, offset=18)[0]
+        print(versionNum)
+
+        if int(versionNum) == 7:
+            texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos, placeholder = unpack_from(
+                "I"*10,
+                data,
+                offset=18+4,
+            )
+            modelNum = unpack_from("B", data, offset = 62)[0]
+            print(texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos)
+            print(placeholder)
+            print("Number of models:", modelNum)
+
+            img = None
+
+            n = unpack_from("B", data, offset=texPos)[0]
+            print("Textures: ", n)
+
+            # Read texture images
+            offset = texPos+1
+            for i in range(0, n):
+                name = unpack_string_from(data, offset)
+                print(name)
+                offset = offset + len(name) + 1
+                dimensions = (
+                    unpack_from("H", data, offset=offset)[0],
+                    unpack_from("H", data, offset=offset+2)[0],
+                )
+                offset = offset+4
+                print(name)
+                print(dimensions)
+                if name in bpy.data.images:
+                    # Already an image with the given name
+                    img = bpy.data.images[name]
+                else:
+                    # No image with this name exists, add a new one
+                    img = bpy.data.images.new(
+                        name=name,
+                        width=dimensions[0],
+                        height=dimensions[1],
+                    )
+                    for i in range(0, dimensions[0]*dimensions[1]):
+                         rgba = data[offset+i*4:offset+i*4+4]
+                         rgba = [co/255 for co in rgba]
+                         img.pixels[i*4:i*4+4] = rgba[:]
+
+            # Read model data
+            # Create a new Blender 'MESH' type object for every SMF model
+            print("Read model data...")
+            dataPos = modPos
+            for model_index in range(modelNum):
+                size = unpack_from("I", data, offset=dataPos)[0]
+                pos = dataPos + 4
+                print(size)
+                no_faces = int(size/3 / SMF_format_size)
+                print(no_faces)
+
+                bm = bmesh.new()
+                uv_layer = bm.loops.layers.uv.verify()
+                for i in range(no_faces):
+                    v = []
+                    uvs = []
+                    for j in range(3):
+                        v_data = SMF_format_struct.unpack_from(data, pos)
+                        pos = pos + SMF_format_struct.size
+                        co = v_data[0:3]
+                        nml = v_data[3:6]
+                        uv = v_data[6:8]
+                        tan = v_data[8:11]
+                        indices = v_data[11:15]
+                        weights = v_data[15:19]
+                        #print(pos, co, nml, uv, tan, indices, weights)
+                        v.append(bm.verts.new(co))
+                        uvs.append(uv)
+                    face = bm.faces.new(v)
+
+                    for i in range(len(face.loops)):
+                        face.loops[i][uv_layer].uv = uvs[i]
+
+                # TODO Use filename without ext here
+                mesh = bpy.data.meshes.new(modName)
+                bm.to_mesh(mesh)
+
+                matName = unpack_string_from(data, offset=pos)
+                pos = pos + len(matName) + 1
+                texName = unpack_string_from(data, offset=pos)
+                pos = pos + len(texName) + 1
+                print(matName, texName)
+
+                visible = unpack_from("B", data, offset=pos)[0]
+                pos += 1
+                skinning_info = unpack_from("II", data, offset=pos)[0]
+                # if != (0, 0) ??
+                pos += 2*4
+
+
+                bpy.ops.object.add(type="MESH")
+                new_obj = bpy.context.active_object
+                new_obj.name = mesh.name    # Let Blender handle the number suffix
+                new_obj.data = mesh
+
+                bpy.ops.object.material_slot_add()
+                bpy.ops.material.new()
+                mat = bpy.data.materials[len(bpy.data.materials)-1]
+                mat.name = matName
+                new_obj.material_slots[0].material = mat
+                mat.node_tree.nodes.new(type="ShaderNodeTexImage") # This is the bl_rna identifier, NOT the type!
+                image_node = mat.node_tree.nodes['Image Texture']
+                image_node.image = img
+                shader_node = mat.node_tree.nodes["Principled BSDF"]
+                mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
+
+                # Advance to next model
+                dataPos = pos
+
+            # Read rig info and construct armature
+            node_num = unpack_from("B", data, offset = rigPos)[0]
+            if node_num > 0:
+                bpy.ops.object.armature_add(enter_editmode=True)
+                armature_object = bpy.data.objects[-1:]
+                armature = armature_object.data
+                bpy.ops.armature.select_all(action='SELECT')
+                bpy.ops.armature.delete()   # Delete default bone
+
+                bone_list = []
+
+                item_bytesize = calcsize("ffffffffBB")
+                print("Number of nodes", node_num)
+                for node_index in range(node_num):
+                    data_tuple = unpack_from("ffffffffBB", data,
+                                offset = rigPos+1 + node_index*item_bytesize)
+                    dq = data_tuple[0:8]
+                    parent_bone_index = data_tuple[8]
+                    is_bone = data_tuple[9]
+                    bpy.ops.armature.bone_primitive_add()
+                    new_bone = bpy.context.object.data.edit_bones[-1:][0]
+                    bone_list.append(new_bone)
+                    rot_quat = Quaternion((dq[3], dq[0], dq[1], dq[2]))
+                    tr_quat = Quaternion((dq[7], dq[4], dq[5], dq[6]))
+                    new_tail = Vector((2 * (tr_quat @ rot_quat.conjugated()))[1:4])
+                    if bone_list and parent_bone_index >= 0:
+                        new_bone.parent = bone_list[parent_bone_index]
+                        new_bone.use_connect = is_bone
+                    new_bone.tail = new_tail
+                    print(new_bone.matrix, new_bone.tail[:])
+
+                bpy.ops.armature.select_all(action='DESELECT')
+                for bone in bpy.context.object.data.edit_bones:
+                    if not bone.use_connect:
+                        bone.select = True
+                bpy.ops.armature.delete()   # What about the root node/bone?
+
+            # Read animations and add actions to the armature
+            # todo
+            """
+            anim_num = unpack_from("B", data, offset = aniPos)
+            print(anim_num)
+            for anim_index in range(anim_num):
+                    anim_name = unpack_string_from(data, offset=aniPos+1)
+                    print(anim_name)
+                    #anim = bpy.data.actions.new(anim_name)"""
+
+
+    return {'FINISHED'}

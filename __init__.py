@@ -11,7 +11,8 @@ bl_info = {
     "category": "Import-Export"}
 
 import bpy
-from .smf import export_smf, import_smf
+from .export_smf import export_smf
+from .import_smf import import_smf
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
