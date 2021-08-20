@@ -372,7 +372,7 @@ def export_smf(operator, context,
         # Mat and tex name
         mat_name = ""
         tex_name = ""
-        if len(obj.material_slots) > 0:
+        if obj.material_slots:
             slot = obj.material_slots[0]
             if slot.material:
                 mat = slot.material
