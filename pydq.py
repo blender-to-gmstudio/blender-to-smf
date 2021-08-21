@@ -1,7 +1,7 @@
 # SMF script equivalents for Blender
 #
 # DQs are stored as a named tuple of 2 Quaternions
-# and can be converted to a tuple for export to SMF using dq_to_tuple_smf
+# and can be converted to a tuple for export to SMF using dq_to_tuple_xyzw
 #
 import bpy
 from collections import namedtuple
@@ -68,7 +68,7 @@ def dq_normalize(dq):
     """Normalize a dual quaternion"""
     l = 1 / dq.real.magnitude
     dq.real.normalize()
-    
+
     d = dq.real.dot(dq.dual)
     # d = dq.real[0] * dq.dual[0] + dq.real[1] * dq.dual[1] + dq.real[2] * dq.dual[2] + dq.real[3] * dq.dual[3]
     dq.dual[0] = (dq.dual[0] - dq.real[0] * d) * l
@@ -77,7 +77,7 @@ def dq_normalize(dq):
     dq.dual[3] = (dq.dual[3] - dq.real[3] * d) * l
     return dq
 
-def dq_to_tuple_smf(dq):
+def dq_to_tuple_xyzw(dq):
     """Return the tuple representation of the given DQ for use with SMF"""
     return (dq.real.x, dq.real.y, dq.real.z, dq.real.w,
             dq.dual.x, dq.dual.y, dq.dual.z, dq.dual.w,)
