@@ -326,8 +326,9 @@ def export_smf(operator, context,
             arma.pose_position = arma_prev_position
 
         # Precalculate skinning info
-        skin_indices = [None] * len(mesh.vertices)
-        skin_weights = [None] * len(mesh.vertices)
+        iter = range(len(mesh.vertices))
+        skin_indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
+        skin_weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
         for v in mesh.vertices:
             mod_groups = [group for group in v.groups
                           if obj.vertex_groups[group.group].name in bone_names]
@@ -336,8 +337,6 @@ def export_smf(operator, context,
             groups = filter(lambda group: (group.weight > 0.0), mod_groups)
             groups = sorted(groups, key=lambda group: group.weight)[0:4]
             s = sum([g.weight for g in groups])
-            skin_indices[v.index] = [0,0,0,0]
-            skin_weights[v.index] = [1,0,0,0]
             for index, group in enumerate(groups):              # 4 bone weights max!
                 vg_index = group.group                          # Index of the vertex group
                 vg_name = obj.vertex_groups[vg_index].name      # Name of the vertex group
