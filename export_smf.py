@@ -348,6 +348,7 @@ def export_smf(operator, context,
         size = len(mesh.loops) * SMF_format_struct.size
         model_bytes.extend(pack('I', size))
         uv_data = mesh.uv_layers.active.data
+        # TODO: loop through mesh's materials first to avoid having to split (#13)
         for face in mesh.polygons:
             for loop in [mesh.loops[i] for i in face.loop_indices]:
                 vertex_data = []
