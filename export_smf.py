@@ -138,6 +138,7 @@ def export_smf(operator, context,
 
     # Write textures and their image data (same thing as seen from SMF)
     # Get unique images and keep their reference to the material that uses them
+    # TODO Some materials may not be in use by any face
     unique_materials = {slot.material
                         for obj in model_list
                         for slot in obj.material_slots
@@ -146,44 +147,9 @@ def export_smf(operator, context,
     unique_images = {}
     if export_textures:
         for mat in unique_materials:
-            if not mat.use_nodes:
-                continue
-
-            output_node_list = [node for node in mat.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
-            if not output_node_list:
-                continue
-
-            node = output_node_list[0]
-            if not node.inputs['Surface'].is_linked:
-                continue
-
-            node = node.inputs['Surface'].links[0].from_node
-            if node.type == 'TEX_IMAGE' and node.image:
-                # Directly connected texture image node with image set
-                if node.image.has_data:
-                    unique_images[mat.name] = node.image
-                else:
-                    operator.report({'WARNING'}, (
-                    "Image " + node.image.name + " "
-                    "has no data loaded. Using default texture instead."
-                    ))
-            else:
-                # Look a bit further
-                # Try to generalize a bit by assuming texture input is at index 0
-                # (color/texture inputs seem to connect to input 0 for all shaders)
-                if not node.inputs[0].is_linked:
-                    continue
-
-                node = node.inputs[0].links[0].from_node
-                if node.type == 'TEX_IMAGE' and node.image:
-                    #if not(0 in node.image.size):
-                    if node.image.has_data:
-                        unique_images[mat.name] = node.image
-                    else:
-                        operator.report({'WARNING'}, (
-                        "Image " + node.image.name + " "
-                        "has no data loaded. Using default texture instead."
-                        ))
+            img = texture_image_from_node_tree(mat)
+            if img:
+                unique_images[mat.name] = img
 
         texture_bytes.extend(pack('B', len(unique_images)))            # Number of unique images
         for img in unique_images.values():
@@ -293,7 +259,11 @@ def export_smf(operator, context,
     # Write models
     dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
     model_bytes = bytearray()
-    no_models = len(model_list)
+    # TODO Preparation step: how do the 'MESH' objects split up according to materials?
+    no_models = 0
+    for obj in model_list:
+        no_models += len([m for m in obj.material_slots if m.material])
+    #no_models = len(model_list)
     model_bytes.extend(pack('B', no_models))
     for obj in model_list:
         # Create a triangulated copy of the mesh
@@ -348,43 +318,45 @@ def export_smf(operator, context,
         size = len(mesh.loops) * SMF_format_struct.size
         model_bytes.extend(pack('I', size))
         uv_data = mesh.uv_layers.active.data
-        # TODO: loop through mesh's materials first to avoid having to split (#13)
-        for face in mesh.polygons:
-            for loop in [mesh.loops[i] for i in face.loop_indices]:
-                vertex_data = []
 
-                vert = mesh.vertices[loop.vertex_index]
-                normal_source = vert                              # One of vert, loop, face
-                normal = normal_source.normal
-                uv = uv_data[loop.index].uv
-                tan_int = [*(int(c*255) for c in loop.tangent), 0]
+        for mat in object_materials:
+            mat_name = mat.name
+            for face in [p for p in mesh.polygons if p.material_index == index]:
+                for loop in [mesh.loops[i] for i in face.loop_indices]:
+                    vertex_data = []
 
-                vertex_data.extend(vert.co)
-                vertex_data.extend(vert.normal)
-                vertex_data.extend(uv)
-                vertex_data.extend(tan_int)
-                vertex_data.extend(skin_indices[vert.index])
-                vertex_data.extend(skin_weights[vert.index])
+                    vert = mesh.vertices[loop.vertex_index]
+                    normal_source = vert                        # One of vert, loop, face
+                    normal = normal_source.normal
+                    uv = uv_data[loop.index].uv
+                    tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
-                vertex_bytedata = SMF_format_struct.pack(*vertex_data)
-                model_bytes.extend(vertex_bytedata)
+                    vertex_data.extend(vert.co)
+                    vertex_data.extend(vert.normal)
+                    vertex_data.extend(uv)
+                    vertex_data.extend(tan_int)
+                    vertex_data.extend(skin_indices[vert.index])
+                    vertex_data.extend(skin_weights[vert.index])
 
-        # Mat and tex name
-        mat_name = ""
-        tex_name = ""
-        if obj.material_slots:
-            slot = obj.material_slots[0]
-            if slot.material:
-                mat = slot.material
-                mat_name = mat.name
-                if export_textures and mat_name in unique_images:
-                    tex_name = unique_images[mat_name].name
+                    vertex_bytedata = SMF_format_struct.pack(*vertex_data)
+                    model_bytes.extend(vertex_bytedata)
 
-        model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
-        model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
+            # Mat and tex name
+            mat_name = ""
+            tex_name = ""
+            if obj.material_slots:
+                slot = obj.material_slots[0]
+                if slot.material:
+                    mat = slot.material
+                    mat_name = mat.name
+                    if export_textures and mat_name in unique_images:
+                        tex_name = unique_images[mat_name].name
 
-        # Visible
-        model_bytes.extend(pack('B',int(not obj.hide_viewport)))
+            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
+            model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
+
+            # Visible
+            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
 
         # Delete triangulated copy of the mesh
         bpy.data.meshes.remove(mesh)
@@ -551,3 +523,46 @@ def apply_world_matrix(matrix, matrix_world):
     mat_w.row[1] *= -1
 
     return mat_w
+
+def texture_image_from_node_tree(material):
+    "Try to get a texture Image from the given material's node tree"
+    if not material.use_nodes:
+        return None
+
+    output_node_list = [node for node in material.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
+    if not output_node_list:
+        return None
+
+    node = output_node_list[0]
+    if not node.inputs['Surface'].is_linked:
+        return None
+
+    node = node.inputs['Surface'].links[0].from_node
+    if node.type == 'TEX_IMAGE' and node.image:
+        # Directly connected texture image node with image set
+        if node.image.has_data:
+            return node.image
+        else:
+            operator.report({'WARNING'}, (
+            "Image " + node.image.name + " "
+            "has no data loaded. Using default texture instead."
+            ))
+            return None
+    else:
+        # Look a bit further
+        # Try to generalize a bit by assuming texture input is at index 0
+        # (color/texture inputs seem to connect to input 0 for all shaders)
+        if not node.inputs[0].is_linked:
+            return None
+
+        node = node.inputs[0].links[0].from_node
+        if node.type == 'TEX_IMAGE' and node.image:
+            #if not(0 in node.image.size):
+            if node.image.has_data:
+                return node.image
+            else:
+                operator.report({'WARNING'}, (
+                "Image " + node.image.name + " "
+                "has no data loaded. Using default texture instead."
+                ))
+                return None
