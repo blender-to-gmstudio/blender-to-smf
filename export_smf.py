@@ -221,6 +221,8 @@ def export_smf(operator, context,
 
     # Write models, list the unique Blender materials in use while we're at it
     dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
+    unique_materials = set()
+    unique_images = set()
     model_bytes = bytearray()
     model_number = 0
     model_bytes.extend(pack('B', model_number))     # Reserve a byte for model count
@@ -272,11 +274,18 @@ def export_smf(operator, context,
         # Write vertex buffer contents
         # First create bytearrays for every material slot
         # (Some may stay empty in case not a single face uses the slot!)
-        ba_count = len(obj.material_slots)
+        ba_count = len(obj.material_slots) if obj.material_slots else 1
         data = [bytearray() for i in range(ba_count)]
         uv_data = mesh.uv_layers.active.data
 
         # Loop through all polygons and write data to appropriate bytearray
+
+        # This way we only need to loop through the data once and don't
+        # have to do any grouping of the data by material.
+        # This happens implicitly through the indexing by face.material_index
+        # In the end we are left with a bytearray per material slot.
+        # A bytearray that's empty at the end indicates no faces use the slot
+        # and thus can be skipped.
         for face in mesh.polygons:
             for loop in [mesh.loops[i] for i in face.loop_indices]:
                 vertex_data = []
@@ -299,34 +308,37 @@ def export_smf(operator, context,
 
         # Now write an SMF model per bytearray that isn't empty ("if ba")
         # Retrieve unique materials and textures/images too!
-        for index, ba in [index, ba in enumerate(data) if ba]:
+        for index, ba in [(index, ba) for (index, ba) in enumerate(data) if ba]:
             model_number += 1
             model_bytes.extend(pack('I', len(ba)))
             model_bytes.extend(ba)
-            mat = obj.material_slots[index].material
-            model_bytes.extend(bytearray(mat.name + '\0', 'utf-8'))
-            model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))
+            mat = None
+            if obj.material_slots:
+                mat = obj.material_slots[index].material
+            img = None
+            if mat:
+                unique_materials.add(mat)
+                img = texture_image_from_node_tree(mat)
+                if img:
+                    unique_images.add(img)
+            mat_name = mat.name if mat else ""
+            img_name = img.name if img else ""
+            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))
+            model_bytes.extend(bytearray(img_name + '\0', 'utf-8'))
             model_bytes.extend(pack('B',int(not obj.hide_viewport)))
 
         # Delete triangulated copy of the mesh
         bpy.data.meshes.remove(mesh)
 
     # Now write the correct model count
-    model_bytes.extend(pack('B', model_number))
+    model_bytes[0] =  model_number
 
     # Write textures and their image data (same thing as seen from SMF)
-    # Get unique images and keep their reference to the material that uses them
-    unique_images = {}
 
     texture_bytes = bytearray()
     if export_textures:
-        for mat in unique_materials:
-            img = texture_image_from_node_tree(mat)
-            if img:
-                unique_images[mat.name] = img
-
-        texture_bytes.extend(pack('B', len(unique_images)))            # Number of unique images
-        for img in unique_images.values():
+        texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
+        for img in unique_images:
             channels, item_number = img.channels, len(img.pixels)
             pixel_number = int(item_number/channels)
             pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
@@ -343,7 +355,7 @@ def export_smf(operator, context,
             bytedata = [floor(component*255) for component in pixel_data]
             texture_bytes.extend(pack('B'*item_number,*bytedata))
     else:
-        texture_bytes.extend(pack('B', len(unique_images)))
+        texture_bytes.extend(pack('B', 0))
 
     # Write animations
     animation_bytes = bytearray()
