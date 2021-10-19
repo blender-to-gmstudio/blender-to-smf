@@ -24,12 +24,13 @@ def prep_mesh(obj, obj_rig, mesh):
     bm.from_mesh(mesh)
 
     # This makes sure the mesh is in the rig's coordinate system
+    """
     if obj_rig and obj.parent == obj_rig:
         bmesh.ops.transform(bm,
             matrix=obj_rig.matrix_world,
             space=obj.matrix_world,
             verts=bm.verts[:]
-            )
+            )"""
 
     # Also apply our own world transform
     bmesh.ops.transform(bm,
@@ -239,6 +240,11 @@ def export_smf(operator, context,
                 arma = mods[0].object.data
                 arma_prev_position = arma.pose_position
                 arma.pose_position = 'REST'
+
+        # Update the depsgraph!
+        # This is important since it actually applies
+        # the change to 'REST' position to the data
+        dg.update()
 
         # The new way of doing things using the context depsgraph
         # Get an evaluated version of the current object
