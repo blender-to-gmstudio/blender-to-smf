@@ -23,16 +23,7 @@ def prep_mesh(obj, obj_rig, mesh):
     bm = bmesh.new()
     bm.from_mesh(mesh)
 
-    # This makes sure the mesh is in the rig's coordinate system
-    """
-    if obj_rig and obj.parent == obj_rig:
-        bmesh.ops.transform(bm,
-            matrix=obj_rig.matrix_world,
-            space=obj.matrix_world,
-            verts=bm.verts[:]
-            )"""
-
-    # Also apply our own world transform
+    # Apply our own world transform
     bmesh.ops.transform(bm,
         matrix=obj.matrix_world,
         space=Matrix(),
