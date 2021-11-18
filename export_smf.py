@@ -254,6 +254,8 @@ def export_smf(operator, context,
         skin_indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
         skin_weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
         for v in mesh.vertices:
+            # Only consider those vertex groups that are used for
+            # the skinning of the vertices to the armature
             mod_groups = [group for group in v.groups
                           if obj.vertex_groups[group.group].name in bone_names]
             # Filter all vertex group assignments with a weight of 0
