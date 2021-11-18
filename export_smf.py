@@ -261,7 +261,10 @@ def export_smf(operator, context,
             # Filter all vertex group assignments with a weight of 0
             # Also see bpy.ops.object.vertex_group_clean
             groups = filter(lambda group: (group.weight > 0.0), mod_groups)
-            groups = sorted(groups, key=lambda group: group.weight)[0:4]
+            # Sort ascending by weight
+            # The 4 last values in the list are then exported
+            # Also see bpy.ops.object.vertex_group_limit_total
+            groups = sorted(groups, key=lambda group: group.weight)[-4:]
             s = sum([g.weight for g in groups])
             for index, group in enumerate(groups):              # 4 bone weights max!
                 vg_index = group.group                          # Index of the vertex group
