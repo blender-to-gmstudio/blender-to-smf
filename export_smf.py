@@ -147,7 +147,7 @@ def export_smf(operator, context,
 
         rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
 
-        if len(rig.bones) == 0:
+        if not rig.bones:
             #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
             pass
 
