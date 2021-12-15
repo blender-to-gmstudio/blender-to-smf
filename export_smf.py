@@ -287,7 +287,9 @@ def export_smf(operator, context,
         # (Some may stay empty in case not a single face uses the slot!)
         ba_count = len(obj.material_slots) if obj.material_slots else 1
         data = [bytearray() for i in range(ba_count)]
-        uv_data = mesh.uv_layers.active.data
+
+        
+        uv_data = mesh.uv_layers.active.data if mesh.uv_layers else None
 
         # Loop through all polygons and write data to appropriate bytearray
 
@@ -304,7 +306,7 @@ def export_smf(operator, context,
                 vert = mesh.vertices[loop.vertex_index]
                 normal_source = vert                            # One of vert, loop, face
                 normal = normal_source.normal
-                uv = uv_data[loop.index].uv
+                uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
                 vertex_data.extend(vert.co)
