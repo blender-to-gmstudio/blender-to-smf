@@ -113,6 +113,17 @@ class ExportSMF(Operator, ExportHelper):
         soft_min=.1,
     )
 
+    interpolation: EnumProperty(
+        name="Interpolation",
+        description="The interpolation to use when playing the animations in SMF",
+        items=[
+            ("KFR", "Keyframe", "Use keyframe interpolation", 0),
+            ("LIN", "Linear", "Sample the animation at a given rate", 1),
+            ("QAD", "Quadratic", "Use quadratic interpolation", 2),
+        ],
+        default="LIN",
+    )
+
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf(self, context, **keywords)
@@ -175,7 +186,8 @@ class SMF_PT_export_advanced(bpy.types.Panel):
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
 
-        #layout.label(text="Other")
+        layout.label(text="Other")
+        layout.prop(operator, 'interpolation')
         #layout.prop(operator, "scale")
 
 def menu_func_export(self, context):

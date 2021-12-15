@@ -81,6 +81,7 @@ def export_smf(operator, context,
                anim_length_mode,
                multiplier,
                subdivisions,
+               interpolation,
                **kwargs,
                ):
     """
@@ -288,7 +289,6 @@ def export_smf(operator, context,
         ba_count = len(obj.material_slots) if obj.material_slots else 1
         data = [bytearray() for i in range(ba_count)]
 
-        
         uv_data = mesh.uv_layers.active.data if mesh.uv_layers else None
 
         # Loop through all polygons and write data to appropriate bytearray
@@ -373,13 +373,13 @@ def export_smf(operator, context,
     # Write animations
     animation_bytes = bytearray()
 
-    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps):
+    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps, interpolation):
         """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
         frame_number = len(keyframe_times)
         animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
         animation_bytes.extend(pack('B', True))                     # loop
         animation_bytes.extend(pack('f', frame_max/fps*1000))       # playTime (ms)
-        animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
+        animation_bytes.extend(pack('B', interpolation))            # interpolation (0, 1, 2)
         animation_bytes.extend(pack('B', multiplier))               # sampleFrameMultiplier
         animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
 
@@ -478,7 +478,13 @@ def export_smf(operator, context,
         #print(kf_times)
 
         # Play and write animation data
-        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps)
+        if interpolation == "KFR":
+            interpolation = 0
+        if interpolation == "LIN":
+            interpolation = 1
+        if interpolation == "QAD":
+            interpolation = 2
+        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
 
         # Restore to previous state
         rig_object.animation_data.action = action_prev
