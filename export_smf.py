@@ -250,6 +250,16 @@ def export_smf(operator, context,
             arma.pose_position = arma_prev_position
 
         # Precalculate skinning info
+
+        # First get a direct mapping between vertex group index and SMF index
+        valid_indices = [i for (i, vg) in enumerate(obj.vertex_groups)
+                         if vg.name in bone_names]
+        vgid_to_smf_map = {i: bindmap[obj.vertex_groups[i].name]
+                           for i in valid_indices}
+
+        # Get skinning info from all vertices
+        # This now only requires the list of vertices and the direct mapping
+        # and can easily be moved into its own function if needed
         iter = range(len(mesh.vertices))
         skin_indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
         skin_weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
@@ -257,7 +267,7 @@ def export_smf(operator, context,
             # Only consider those vertex groups that are used for
             # the skinning of the vertices to the armature
             mod_groups = [group for group in v.groups
-                          if obj.vertex_groups[group.group].name in bone_names]
+                          if group.group in vgid_to_smf_map.keys()]
             # Filter all vertex group assignments with a weight of 0
             # Also see bpy.ops.object.vertex_group_clean
             groups = filter(lambda group: (group.weight > 0.0), mod_groups)
@@ -268,9 +278,8 @@ def export_smf(operator, context,
             s = sum([g.weight for g in groups])
             for index, group in enumerate(groups):              # 4 bone weights max!
                 vg_index = group.group                          # Index of the vertex group
-                vg_name = obj.vertex_groups[vg_index].name      # Name of the vertex group
                 w = group.weight/s*255
-                skin_indices[v.index][index] = bindmap[vg_name]
+                skin_indices[v.index][index] = vgid_to_smf_map[vg_index]
                 skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
 
         # Write vertex buffer contents
