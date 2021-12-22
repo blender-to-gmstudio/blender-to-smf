@@ -2,7 +2,7 @@ bl_info = {
     "name": "Export SMF",
     "description": "Export to SMF 10 (SnidrsModelFormat)",
     "author": "Bart Teunis",
-    "version": (0, 8, 0),
+    "version": (0, 8, 1),
     "blender": (2, 80, 0),
     "location": "File > Export",
     "warning": "", # used for warning icon and text in addons panel
@@ -66,8 +66,8 @@ class ExportSMF(Operator, ExportHelper):
         items=[
             ("CUR","Current Action", "Export the Armature's current action as a single animation", 0),
             ("LNK","Linked NLA Actions", "Export all (unique) actions that are linked indirectly through NLA tracks", 1),
-            ("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
-            ("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
+            #("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
+            #("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
         ],
         default="CUR",
     )
@@ -178,7 +178,7 @@ class SMF_PT_export_advanced(bpy.types.Panel):
 
         layout.label(text="General")
         layout.prop(operator, 'anim_export_mode')
-        layout.prop(operator, 'anim_length_mode')
+        #layout.prop(operator, 'anim_length_mode')
 
         layout.label(text="Specifics")
         layout.prop(operator, 'export_type')
