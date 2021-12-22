@@ -182,12 +182,12 @@ class SMF_PT_export_advanced(bpy.types.Panel):
 
         layout.label(text="Specifics")
         layout.prop(operator, 'export_type')
-        layout.prop(operator, 'multiplier')
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
 
         layout.label(text="Other")
         layout.prop(operator, 'interpolation')
+        layout.prop(operator, 'multiplier')
         #layout.prop(operator, "scale")
 
 def menu_func_export(self, context):
