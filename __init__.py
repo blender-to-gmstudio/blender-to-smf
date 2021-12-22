@@ -2,7 +2,7 @@ bl_info = {
     "name": "Export SMF",
     "description": "Export to SMF 10 (SnidrsModelFormat)",
     "author": "Bart Teunis",
-    "version": (0, 8, 0),
+    "version": (0, 8, 1),
     "blender": (2, 80, 0),
     "location": "File > Export",
     "warning": "", # used for warning icon and text in addons panel
@@ -11,7 +11,8 @@ bl_info = {
     "category": "Import-Export"}
 
 import bpy
-from .smf import export_smf, import_smf
+from .export_smf import export_smf
+from .import_smf import import_smf
 
 # ExportHelper is a helper class, defines filename and
 # invoke() function which calls the file selector.
@@ -65,8 +66,8 @@ class ExportSMF(Operator, ExportHelper):
         items=[
             ("CUR","Current Action", "Export the Armature's current action as a single animation", 0),
             ("LNK","Linked NLA Actions", "Export all (unique) actions that are linked indirectly through NLA tracks", 1),
-            ("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
-            ("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
+            #("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
+            #("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
         ],
         default="CUR",
     )
@@ -110,6 +111,17 @@ class ExportSMF(Operator, ExportHelper):
         description="Scale factor to be applied to geometry and rig",
         default=1,
         soft_min=.1,
+    )
+
+    interpolation: EnumProperty(
+        name="Interpolation",
+        description="The interpolation to use when playing the animations in SMF",
+        items=[
+            ("KFR", "Keyframe", "Use keyframe interpolation", 0),
+            ("LIN", "Linear", "Sample the animation at a given rate", 1),
+            ("QAD", "Quadratic", "Use quadratic interpolation", 2),
+        ],
+        default="LIN",
     )
 
     def execute(self, context):
@@ -166,15 +178,16 @@ class SMF_PT_export_advanced(bpy.types.Panel):
 
         layout.label(text="General")
         layout.prop(operator, 'anim_export_mode')
-        layout.prop(operator, 'anim_length_mode')
+        #layout.prop(operator, 'anim_length_mode')
 
         layout.label(text="Specifics")
         layout.prop(operator, 'export_type')
-        layout.prop(operator, 'multiplier')
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
 
-        #layout.label(text="Other")
+        layout.label(text="Other")
+        layout.prop(operator, 'interpolation')
+        layout.prop(operator, 'multiplier')
         #layout.prop(operator, "scale")
 
 def menu_func_export(self, context):

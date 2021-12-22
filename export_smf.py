@@ -7,7 +7,7 @@ from mathutils import *
 from math import *
 from os import path
 
-SMF_version = 10
+SMF_version = 10    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
@@ -17,29 +17,21 @@ SMF_format_size = SMF_format_struct.size
 meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
 def prep_mesh(obj, obj_rig, mesh):
-    """Triangulate the given mesh using the BMesh library"""
+    """Prepare the given mesh for export to SMF using the BMesh library"""
     import bmesh
 
     bm = bmesh.new()
     bm.from_mesh(mesh)
 
-    # This makes sure the mesh is in the rig's coordinate system
-    if obj_rig and obj.parent == obj_rig:
-        bmesh.ops.transform(bm,
-            matrix=obj_rig.matrix_world,
-            space=obj.matrix_world,
-            verts=bm.verts[:]
-            )
-
-    # Also apply our own world transform
+    # Apply our own world transform
     bmesh.ops.transform(bm,
         matrix=obj.matrix_world,
         space=Matrix(),
         verts = bm.verts[:]
-        )
+    )
 
-    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     # See https://blender.stackexchange.com/a/122321
+    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     bmesh.ops.mirror(bm,
         geom=geom_orig,
         axis='Y',
@@ -81,6 +73,31 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
+def smf_skin_indices_weights(vertices, index_map):
+    """Get skinning info from all vertices"""
+    # This requires the list of vertices and the direct mapping
+    # of Blender vertex group index to SMF bone index
+    iter = range(len(vertices))
+    indices = [[0, 0, 0, 0] for i in iter]          # Use list comprehension
+    weights = [[1, 0, 0, 0] for i in iter]          # for fast initialization
+    for v in vertices:
+        # Only keep the vertex groups used for skinning
+        mod_groups = [group for group in v.groups
+                      if group.group in index_map.keys()]
+        # Filter all vertex group assignments with a weight of 0
+        # See bpy.ops.object.vertex_group_clean
+        groups = filter(lambda group: (group.weight > 0.0), mod_groups)
+        # Keep the highest four weights (SMF supports 4)
+        # See bpy.ops.object.vertex_group_limit_total
+        groups = sorted(groups, key=lambda group: group.weight)[-4:]
+        s = sum([g.weight for g in groups])
+        for index, group in enumerate(groups):
+            w = group.weight/s*255
+            indices[v.index][index] = index_map[group.group]
+            weights[v.index][index] = int(w if w <= 255 else 255) # ubyte range!
+
+    return (indices, weights)
+
 def export_smf(operator, context,
                filepath,
                export_textures,
@@ -89,6 +106,7 @@ def export_smf(operator, context,
                anim_length_mode,
                multiplier,
                subdivisions,
+               interpolation,
                **kwargs,
                ):
     """
@@ -134,80 +152,9 @@ def export_smf(operator, context,
     bindmap = {}
     bone_names = []
 
-    texture_bytes = bytearray()
-
-    # Write textures and their image data (same thing as seen from SMF)
-    # Get unique images and keep their reference to the material that uses them
-    unique_materials = {slot.material
-                        for obj in model_list
-                        for slot in obj.material_slots
-                        if slot.material}
-
-    unique_images = {}
-    if export_textures:
-        for mat in unique_materials:
-            if not mat.use_nodes:
-                continue
-
-            output_node_list = [node for node in mat.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
-            if not output_node_list:
-                continue
-
-            node = output_node_list[0]
-            if not node.inputs['Surface'].is_linked:
-                continue
-
-            node = node.inputs['Surface'].links[0].from_node
-            if node.type == 'TEX_IMAGE' and node.image:
-                # Directly connected texture image node with image set
-                if node.image.has_data:
-                    unique_images[mat.name] = node.image
-                else:
-                    operator.report({'WARNING'}, (
-                    "Image " + node.image.name + " "
-                    "has no data loaded. Using default texture instead."
-                    ))
-            else:
-                # Look a bit further
-                # Try to generalize a bit by assuming texture input is at index 0
-                # (color/texture inputs seem to connect to input 0 for all shaders)
-                if not node.inputs[0].is_linked:
-                    continue
-
-                node = node.inputs[0].links[0].from_node
-                if node.type == 'TEX_IMAGE' and node.image:
-                    #if not(0 in node.image.size):
-                    if node.image.has_data:
-                        unique_images[mat.name] = node.image
-                    else:
-                        operator.report({'WARNING'}, (
-                        "Image " + node.image.name + " "
-                        "has no data loaded. Using default texture instead."
-                        ))
-
-        texture_bytes.extend(pack('B', len(unique_images)))            # Number of unique images
-        for img in unique_images.values():
-            channels, item_number = img.channels, len(img.pixels)
-            pixel_number = int(item_number/channels)
-            pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
-
-            texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
-            texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
-
-            #print(img.name, img.size[:])
-
-            for cpo in img.size:
-                if floor(log2(cpo)) != log2(cpo):
-                    operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
-
-            bytedata = [floor(component*255) for component in pixel_data]
-            texture_bytes.extend(pack('B'*item_number,*bytedata))
-    else:
-        texture_bytes.extend(pack('B', len(unique_images)))
-
     # Write an empty chunk for materials
     material_bytes = bytearray()
-    material_bytes.extend(pack('B', len(unique_materials)))
+    material_bytes.extend(pack('B', 0))
 
     # Write rig
     rig_bytes = bytearray()
@@ -226,7 +173,7 @@ def export_smf(operator, context,
 
         rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
 
-        if len(rig.bones) == 0:
+        if not rig.bones:
             #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
             pass
 
@@ -290,18 +237,16 @@ def export_smf(operator, context,
             print(s)
             print(debug_vals[i])
 
-    # Write models
+    # Write models, list the unique Blender materials in use while we're at it
     dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
+    unique_materials = set()
+    unique_images = set()
     model_bytes = bytearray()
-    no_models = len(model_list)
-    model_bytes.extend(pack('B', no_models))
+    model_number = 0
+    model_bytes.extend(pack('B', model_number))     # Reserve a byte for model count
     for obj in model_list:
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
-
-        # The old way of doing things, doesn't apply modifiers at all
-        #mesh = obj.data.copy()
-        #prep_mesh(obj, rig_object, mesh)
 
         # First, see if this mesh object has an Armature modifier set
         # Set to rest pose if that's the case
@@ -312,6 +257,11 @@ def export_smf(operator, context,
                 arma = mods[0].object.data
                 arma_prev_position = arma.pose_position
                 arma.pose_position = 'REST'
+
+        # Update the depsgraph!
+        # This is important since it actually applies
+        # the change to 'REST' position to the data
+        dg.update()
 
         # The new way of doing things using the context depsgraph
         # Get an evaluated version of the current object
@@ -325,38 +275,42 @@ def export_smf(operator, context,
         if arma:
             arma.pose_position = arma_prev_position
 
-        # Precalculate skinning info
-        skin_indices = [None] * len(mesh.vertices)
-        skin_weights = [None] * len(mesh.vertices)
-        for v in mesh.vertices:
-            mod_groups = [group for group in v.groups
-                          if obj.vertex_groups[group.group].name in bone_names]
-            # Filter all vertex group assignments with a weight of 0
-            # Also see bpy.ops.object.vertex_group_clean
-            groups = filter(lambda group: (group.weight > 0.0), mod_groups)
-            groups = sorted(groups, key=lambda group: group.weight)[0:4]
-            s = sum([g.weight for g in groups])
-            skin_indices[v.index] = [0,0,0,0]
-            skin_weights[v.index] = [1,0,0,0]
-            for index, group in enumerate(groups):              # 4 bone weights max!
-                vg_index = group.group                          # Index of the vertex group
-                vg_name = obj.vertex_groups[vg_index].name      # Name of the vertex group
-                w = group.weight/s*255
-                skin_indices[v.index][index] = bindmap[vg_name]
-                skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+        # Get a direct mapping between vertex group index and SMF index
+        valid_indices = [i for (i, vg) in enumerate(obj.vertex_groups)
+                         if vg.name in bone_names]
+        vgid_to_smf_map = {i: bindmap[obj.vertex_groups[i].name]
+                           for i in valid_indices}
+
+        # Precalculate skinning info for this mesh's vertices
+        skin_indices, skin_weights = smf_skin_indices_weights(
+            mesh.vertices,
+            vgid_to_smf_map
+        )
 
         # Write vertex buffer contents
-        size = len(mesh.loops) * SMF_format_struct.size
-        model_bytes.extend(pack('I', size))
-        uv_data = mesh.uv_layers.active.data
+        # First create bytearrays for every material slot
+        # (Some may stay empty in case not a single face uses the slot!)
+        ba_count = len(obj.material_slots) if obj.material_slots else 1
+        data = [bytearray() for i in range(ba_count)]
+
+        uv_data = mesh.uv_layers.active.data if mesh.uv_layers else None
+
+        # Loop through all polygons and write data to appropriate bytearray
+
+        # This way we only need to loop through the data once and don't
+        # have to do any grouping of the data by material.
+        # This happens implicitly through the indexing by face.material_index
+        # In the end we are left with a bytearray per material slot.
+        # A bytearray that's empty at the end indicates no faces use the slot
+        # and thus can be skipped.
         for face in mesh.polygons:
             for loop in [mesh.loops[i] for i in face.loop_indices]:
                 vertex_data = []
 
                 vert = mesh.vertices[loop.vertex_index]
-                normal_source = vert                              # One of vert, loop, face
+                normal_source = vert                # One of vert, loop, face
                 normal = normal_source.normal
-                uv = uv_data[loop.index].uv
+                uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
                 vertex_data.extend(vert.co)
@@ -367,38 +321,67 @@ def export_smf(operator, context,
                 vertex_data.extend(skin_weights[vert.index])
 
                 vertex_bytedata = SMF_format_struct.pack(*vertex_data)
-                model_bytes.extend(vertex_bytedata)
+                data[face.material_index].extend(vertex_bytedata)
 
-        # Mat and tex name
-        mat_name = ""
-        tex_name = ""
-        if len(obj.material_slots) > 0:
-            slot = obj.material_slots[0]
-            if slot.material:
-                mat = slot.material
-                mat_name = mat.name
-                if export_textures and mat_name in unique_images:
-                    tex_name = unique_images[mat_name].name
-
-        model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))   # Mat name
-        model_bytes.extend(bytearray(tex_name + '\0', 'utf-8'))   # Tex name
-
-        # Visible
-        model_bytes.extend(pack('B',int(not obj.hide_viewport)))
+        # Now write an SMF model per bytearray that isn't empty ("if ba")
+        # Retrieve unique materials and textures/images too!
+        for index, ba in [(index, ba) for (index, ba) in enumerate(data) if ba]:
+            model_number += 1
+            model_bytes.extend(pack('I', len(ba)))
+            model_bytes.extend(ba)
+            mat = None
+            if obj.material_slots:
+                mat = obj.material_slots[index].material
+            img = None
+            if mat:
+                unique_materials.add(mat)
+                img = texture_image_from_node_tree(mat)
+                if img:
+                    unique_images.add(img)
+            mat_name = mat.name if mat else ""
+            img_name = img.name if img else ""
+            model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))
+            model_bytes.extend(bytearray(img_name + '\0', 'utf-8'))
+            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
 
         # Delete triangulated copy of the mesh
         bpy.data.meshes.remove(mesh)
 
+    # Now write the correct model count
+    model_bytes[0] =  model_number
+
+    # Write textures and their image data (same thing as seen from SMF)
+
+    texture_bytes = bytearray()
+    if export_textures:
+        texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
+        for img in unique_images:
+            channels, item_number = img.channels, len(img.pixels)
+            pixel_number = int(item_number/channels)
+            pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
+
+            texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
+            texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
+
+            for cpo in img.size:
+                if floor(log2(cpo)) != log2(cpo):
+                    operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
+
+            bytedata = [floor(component*255) for component in pixel_data]
+            texture_bytes.extend(pack('B'*item_number,*bytedata))
+    else:
+        texture_bytes.extend(pack('B', 0))
+
     # Write animations
     animation_bytes = bytearray()
 
-    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps):
+    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps, interpolation):
         """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
         frame_number = len(keyframe_times)
         animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
         animation_bytes.extend(pack('B', True))                     # loop
         animation_bytes.extend(pack('f', frame_max/fps*1000))       # playTime (ms)
-        animation_bytes.extend(pack('B', 1))                        # interpolation (0, 1, 2)
+        animation_bytes.extend(pack('B', interpolation))            # interpolation (0, 1, 2)
         animation_bytes.extend(pack('B', multiplier))               # sampleFrameMultiplier
         animation_bytes.extend(pack('I', frame_number))             # animFrameNumber
 
@@ -497,7 +480,13 @@ def export_smf(operator, context,
         #print(kf_times)
 
         # Play and write animation data
-        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps)
+        if interpolation == "KFR":
+            interpolation = 0
+        if interpolation == "LIN":
+            interpolation = 1
+        if interpolation == "QAD":
+            interpolation = 2
+        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
 
         # Restore to previous state
         rig_object.animation_data.action = action_prev
@@ -552,196 +541,49 @@ def apply_world_matrix(matrix, matrix_world):
 
     return mat_w
 
-### IMPORT ###
+def texture_image_from_node_tree(material):
+    "Try to get a texture Image from the given material's node tree"
+    if not material.use_nodes:
+        return None
 
-from struct import unpack, unpack_from
+    output_node_list = [node for node in material.node_tree.nodes if node.type == 'OUTPUT_MATERIAL']
+    if not output_node_list:
+        return None
 
-def unpack_string_from(data, offset=0):
-    """Unpacks a zero terminated string from the given offset in the data"""
-    result = ""
-    while data[offset] != 0:
-        result += chr(data[offset])
-        offset += 1
-    return result
+    node = output_node_list[0]
+    if not node.inputs['Surface'].is_linked:
+        return None
 
-def import_smf(filepath):
-    """Main entry point for SMF import"""
-    import bmesh
-    modName = path.basename(filepath)
-    print("Model file: " + str(modName))
-
-    data = bytearray()
-    with open(filepath, 'rb') as file:
-        data = file.read()
-
-    header_bytes = unpack_from("17s", data)[0]
-    header_text = "".join([chr(b) for b in header_bytes])
-    #print(header_text)
-
-    if header_text == "SnidrsModelFormat":
-        # Valid SMF v7 file
-        versionNum = unpack_from("f", data, offset=18)[0]
-        print(versionNum)
-
-        if int(versionNum) == 7:
-            texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos, placeholder = unpack_from(
-                "I"*10,
-                data,
-                offset=18+4,
-            )
-            modelNum = unpack_from("B", data, offset = 62)[0]
-            print(texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos)
-            print(placeholder)
-            print("Number of models:", modelNum)
-
-            img = None
-
-            n = unpack_from("B", data, offset=texPos)[0]
-            print("Textures: ", n)
-
-            # Read texture images
-            offset = texPos+1
-            for i in range(0, n):
-                name = unpack_string_from(data, offset)
-                print(name)
-                offset = offset + len(name) + 1
-                dimensions = (
-                    unpack_from("H", data, offset=offset)[0],
-                    unpack_from("H", data, offset=offset+2)[0],
-                )
-                offset = offset+4
-                print(name)
-                print(dimensions)
-                if name in bpy.data.images:
-                    # Already an image with the given name
-                    img = bpy.data.images[name]
-                else:
-                    # No image with this name exists, add a new one
-                    img = bpy.data.images.new(
-                        name=name,
-                        width=dimensions[0],
-                        height=dimensions[1],
-                    )
-                    for i in range(0, dimensions[0]*dimensions[1]):
-                         rgba = data[offset+i*4:offset+i*4+4]
-                         rgba = [co/255 for co in rgba]
-                         img.pixels[i*4:i*4+4] = rgba[:]
-
-            # Read model data
-            # Create a new Blender 'MESH' type object for every SMF model
-            print("Read model data...")
-            dataPos = modPos
-            for model_index in range(modelNum):
-                size = unpack_from("I", data, offset=dataPos)[0]
-                pos = dataPos + 4
-                print(size)
-                no_faces = int(size/3 / SMF_format_size)
-                print(no_faces)
-
-                bm = bmesh.new()
-                uv_layer = bm.loops.layers.uv.verify()
-                for i in range(no_faces):
-                    v = []
-                    uvs = []
-                    for j in range(3):
-                        v_data = SMF_format_struct.unpack_from(data, pos)
-                        pos = pos + SMF_format_struct.size
-                        co = v_data[0:3]
-                        nml = v_data[3:6]
-                        uv = v_data[6:8]
-                        tan = v_data[8:11]
-                        indices = v_data[11:15]
-                        weights = v_data[15:19]
-                        #print(pos, co, nml, uv, tan, indices, weights)
-                        v.append(bm.verts.new(co))
-                        uvs.append(uv)
-                    face = bm.faces.new(v)
-
-                    for i in range(len(face.loops)):
-                        face.loops[i][uv_layer].uv = uvs[i]
-
-                # TODO Use filename without ext here
-                mesh = bpy.data.meshes.new(modName)
-                bm.to_mesh(mesh)
-
-                matName = unpack_string_from(data, offset=pos)
-                pos = pos + len(matName) + 1
-                texName = unpack_string_from(data, offset=pos)
-                pos = pos + len(texName) + 1
-                print(matName, texName)
-
-                visible = unpack_from("B", data, offset=pos)[0]
-                pos += 1
-                skinning_info = unpack_from("II", data, offset=pos)[0]
-                # if != (0, 0) ??
-                pos += 2*4
-
-
-                bpy.ops.object.add(type="MESH")
-                new_obj = bpy.context.active_object
-                new_obj.name = mesh.name    # Let Blender handle the number suffix
-                new_obj.data = mesh
-
-                bpy.ops.object.material_slot_add()
-                bpy.ops.material.new()
-                mat = bpy.data.materials[len(bpy.data.materials)-1]
-                mat.name = matName
-                new_obj.material_slots[0].material = mat
-                mat.node_tree.nodes.new(type="ShaderNodeTexImage") # This is the bl_rna identifier, NOT the type!
-                image_node = mat.node_tree.nodes['Image Texture']
-                image_node.image = img
-                shader_node = mat.node_tree.nodes["Principled BSDF"]
-                mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
-
-                # Advance to next model
-                dataPos = pos
-
-            # Read rig info and construct armature
-            node_num = unpack_from("B", data, offset = rigPos)[0]
-            if node_num > 0:
-                bpy.ops.object.armature_add(enter_editmode=True)
-                armature_object = bpy.data.objects[-1:]
-                armature = armature_object.data
-                bpy.ops.armature.select_all(action='SELECT')
-                bpy.ops.armature.delete()   # Delete default bone
-
-                bone_list = []
-
-                item_bytesize = calcsize("ffffffffBB")
-                print("Number of nodes", node_num)
-                for node_index in range(node_num):
-                    data_tuple = unpack_from("ffffffffBB", data,
-                                offset = rigPos+1 + node_index*item_bytesize)
-                    dq = data_tuple[0:8]
-                    parent_bone_index = data_tuple[8]
-                    is_bone = data_tuple[9]
-                    bpy.ops.armature.bone_primitive_add()
-                    new_bone = bpy.context.object.data.edit_bones[-1:][0]
-                    bone_list.append(new_bone)
-                    rot_quat = Quaternion((dq[3], dq[0], dq[1], dq[2]))
-                    tr_quat = Quaternion((dq[7], dq[4], dq[5], dq[6]))
-                    new_tail = Vector((2 * (tr_quat @ rot_quat.conjugated()))[1:4])
-                    if bone_list and parent_bone_index >= 0:
-                        new_bone.parent = bone_list[parent_bone_index]
-                        new_bone.use_connect = is_bone
-                    new_bone.tail = new_tail
-                    print(new_bone.matrix, new_bone.tail[:])
-
-                bpy.ops.armature.select_all(action='DESELECT')
-                for bone in bpy.context.object.data.edit_bones:
-                    if not bone.use_connect:
-                        bone.select = True
-                bpy.ops.armature.delete()   # What about the root node/bone?
-
-            # Read animations and add actions to the armature
-            # todo
+    node = node.inputs['Surface'].links[0].from_node
+    if node.type == 'TEX_IMAGE' and node.image:
+        # Directly connected texture image node with image set
+        if node.image.has_data:
+            return node.image
+        else:
             """
-            anim_num = unpack_from("B", data, offset = aniPos)
-            print(anim_num)
-            for anim_index in range(anim_num):
-                    anim_name = unpack_string_from(data, offset=aniPos+1)
-                    print(anim_name)
-                    #anim = bpy.data.actions.new(anim_name)"""
+            operator.report({'WARNING'}, (
+            "Image " + node.image.name + " "
+            "has no data loaded. Using default texture instead."
+            ))
+            return None
+            """
+    else:
+        # Look a bit further
+        # Try to generalize a bit by assuming texture input is at index 0
+        # (color/texture inputs seem to connect to input 0 for all shaders)
+        if not node.inputs[0].is_linked:
+            return None
 
-
-    return {'FINISHED'}
+        node = node.inputs[0].links[0].from_node
+        if node.type == 'TEX_IMAGE' and node.image:
+            #if not(0 in node.image.size):
+            if node.image.has_data:
+                return node.image
+            else:
+                """
+                operator.report({'WARNING'}, (
+                "Image " + node.image.name + " "
+                "has no data loaded. Using default texture instead."
+                ))
+                return None
+                """
