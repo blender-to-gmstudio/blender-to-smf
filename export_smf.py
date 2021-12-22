@@ -73,6 +73,34 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
+def smf_skin_indices_weights(vertices, index_map):
+    """Get skinning info from all vertices"""
+    # This requires the list of vertices and the direct mapping
+    # of Blender vertex group index to SMF bone index
+    iter = range(len(vertices))
+    indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
+    weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
+    for v in vertices:
+        # Only consider those vertex groups that are used for
+        # the skinning of the vertices to the armature
+        mod_groups = [group for group in v.groups
+                      if group.group in index_map.keys()]
+        # Filter all vertex group assignments with a weight of 0
+        # Also see bpy.ops.object.vertex_group_clean
+        groups = filter(lambda group: (group.weight > 0.0), mod_groups)
+        # Sort ascending by weight
+        # The 4 last values in the list are then exported
+        # Also see bpy.ops.object.vertex_group_limit_total
+        groups = sorted(groups, key=lambda group: group.weight)[-4:]
+        s = sum([g.weight for g in groups])
+        for index, group in enumerate(groups):          # 4 bone weights max!
+            vg_index = group.group                      # Index of the vertex group
+            w = group.weight/s*255
+            indices[v.index][index] = index_map[vg_index]
+            weights[v.index][index] = int(w if w <= 255 else 255) # ubyte range!
+
+    return (indices, weights)
+
 def export_smf(operator, context,
                filepath,
                export_textures,
@@ -250,38 +278,17 @@ def export_smf(operator, context,
         if arma:
             arma.pose_position = arma_prev_position
 
-        # Precalculate skinning info
-
-        # First get a direct mapping between vertex group index and SMF index
+        # Get a direct mapping between vertex group index and SMF index
         valid_indices = [i for (i, vg) in enumerate(obj.vertex_groups)
                          if vg.name in bone_names]
         vgid_to_smf_map = {i: bindmap[obj.vertex_groups[i].name]
                            for i in valid_indices}
 
-        # Get skinning info from all vertices
-        # This now only requires the list of vertices and the direct mapping
-        # and can easily be moved into its own function if needed
-        iter = range(len(mesh.vertices))
-        skin_indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
-        skin_weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
-        for v in mesh.vertices:
-            # Only consider those vertex groups that are used for
-            # the skinning of the vertices to the armature
-            mod_groups = [group for group in v.groups
-                          if group.group in vgid_to_smf_map.keys()]
-            # Filter all vertex group assignments with a weight of 0
-            # Also see bpy.ops.object.vertex_group_clean
-            groups = filter(lambda group: (group.weight > 0.0), mod_groups)
-            # Sort ascending by weight
-            # The 4 last values in the list are then exported
-            # Also see bpy.ops.object.vertex_group_limit_total
-            groups = sorted(groups, key=lambda group: group.weight)[-4:]
-            s = sum([g.weight for g in groups])
-            for index, group in enumerate(groups):              # 4 bone weights max!
-                vg_index = group.group                          # Index of the vertex group
-                w = group.weight/s*255
-                skin_indices[v.index][index] = vgid_to_smf_map[vg_index]
-                skin_weights[v.index][index] = int(w if w <= 255 else 255)  # clamp to ubyte range!
+        # Precalculate skinning info for this mesh's vertices
+        skin_indices, skin_weights = smf_skin_indices_weights(
+            mesh.vertices,
+            vgid_to_smf_map
+        )
 
         # Write vertex buffer contents
         # First create bytearrays for every material slot
@@ -304,7 +311,7 @@ def export_smf(operator, context,
                 vertex_data = []
 
                 vert = mesh.vertices[loop.vertex_index]
-                normal_source = vert                            # One of vert, loop, face
+                normal_source = vert                # One of vert, loop, face
                 normal = normal_source.normal
                 uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
