@@ -17,7 +17,7 @@ SMF_format_size = SMF_format_struct.size
 meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
 def prep_mesh(obj, obj_rig, mesh):
-    """Triangulate the given mesh using the BMesh library"""
+    """Prepare the given mesh for export to SMF using the BMesh library"""
     import bmesh
 
     bm = bmesh.new()
@@ -28,12 +28,11 @@ def prep_mesh(obj, obj_rig, mesh):
         matrix=obj.matrix_world,
         space=Matrix(),
         verts = bm.verts[:]
-        )
+    )
 
-    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     # See https://blender.stackexchange.com/a/122321
     bmesh.ops.mirror(bm,
-        geom=geom_orig,
+        geom=bm.faces[:] + bm.verts[:] + bm.edges[:],
         axis='Y',
         merge_dist=-1
     )
@@ -362,8 +361,6 @@ def export_smf(operator, context,
 
             texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
             texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
-
-            #print(img.name, img.size[:])
 
             for cpo in img.size:
                 if floor(log2(cpo)) != log2(cpo):
