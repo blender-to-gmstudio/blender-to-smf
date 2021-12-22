@@ -31,8 +31,9 @@ def prep_mesh(obj, obj_rig, mesh):
     )
 
     # See https://blender.stackexchange.com/a/122321
+    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
     bmesh.ops.mirror(bm,
-        geom=bm.faces[:] + bm.verts[:] + bm.edges[:],
+        geom=geom_orig,
         axis='Y',
         merge_dist=-1
     )
