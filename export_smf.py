@@ -78,25 +78,22 @@ def smf_skin_indices_weights(vertices, index_map):
     # This requires the list of vertices and the direct mapping
     # of Blender vertex group index to SMF bone index
     iter = range(len(vertices))
-    indices = [[0, 0, 0, 0] for i in iter]             # Use list comprehension
-    weights = [[1, 0, 0, 0] for i in iter]             # for fast initialization
+    indices = [[0, 0, 0, 0] for i in iter]          # Use list comprehension
+    weights = [[1, 0, 0, 0] for i in iter]          # for fast initialization
     for v in vertices:
-        # Only consider those vertex groups that are used for
-        # the skinning of the vertices to the armature
+        # Only keep the vertex groups used for skinning
         mod_groups = [group for group in v.groups
                       if group.group in index_map.keys()]
         # Filter all vertex group assignments with a weight of 0
-        # Also see bpy.ops.object.vertex_group_clean
+        # See bpy.ops.object.vertex_group_clean
         groups = filter(lambda group: (group.weight > 0.0), mod_groups)
-        # Sort ascending by weight
-        # The 4 last values in the list are then exported
-        # Also see bpy.ops.object.vertex_group_limit_total
+        # Keep the highest four weights (SMF supports 4)
+        # See bpy.ops.object.vertex_group_limit_total
         groups = sorted(groups, key=lambda group: group.weight)[-4:]
         s = sum([g.weight for g in groups])
-        for index, group in enumerate(groups):          # 4 bone weights max!
-            vg_index = group.group                      # Index of the vertex group
+        for index, group in enumerate(groups):
             w = group.weight/s*255
-            indices[v.index][index] = index_map[vg_index]
+            indices[v.index][index] = index_map[group.group]
             weights[v.index][index] = int(w if w <= 255 else 255) # ubyte range!
 
     return (indices, weights)
