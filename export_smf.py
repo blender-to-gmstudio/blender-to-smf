@@ -363,18 +363,17 @@ def export_smf(operator, context,
         texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
         for img in unique_images:
             channels, item_number = img.channels, len(img.pixels)
-            pixel_number = int(item_number/channels)
             pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
 
             texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
-            texture_bytes.extend(pack('HH',*img.size))                  # Texture size (w,h)
+            texture_bytes.extend(pack('HH', *img.size))                 # Texture size (w,h)
 
             for cpo in img.size:
                 if floor(log2(cpo)) != log2(cpo):
                     operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
 
             bytedata = [floor(component*255) for component in pixel_data]
-            texture_bytes.extend(pack('B'*item_number,*bytedata))
+            texture_bytes.extend(pack('B'*item_number, *bytedata))
     else:
         texture_bytes.extend(pack('B', 0))
 
