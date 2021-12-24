@@ -364,6 +364,7 @@ def export_smf(operator, context,
         for img in unique_images:
             channels, item_number = img.channels, len(img.pixels)
             pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
+            # TODO Image.pixels.foreach_get??
 
             texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
             texture_bytes.extend(pack('HH', *img.size))                 # Texture size (w,h)
