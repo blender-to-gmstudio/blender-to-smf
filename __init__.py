@@ -6,7 +6,7 @@ bl_info = {
     "blender": (2, 80, 0),
     "location": "File > Export",
     "warning": "",  # used for warning icon and text in addons panel
-    "wiki_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",
+    "doc_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",
     "tracker_url": "https://github.com/blender-to-gmstudio/blender-to-smf/issues",
     "category": "Import-Export"}
 
