@@ -38,7 +38,8 @@ def prep_mesh(obj, obj_rig, mesh):
         merge_dist=-1
     )
     bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
-    bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+    #bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
+    bmesh.ops.reverse_faces(bm, faces=bm.faces[:])  # Avoid normals messing up
 
     # Triangulate the mesh
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
