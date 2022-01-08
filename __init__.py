@@ -137,6 +137,12 @@ class ExportSMF(Operator, ExportHelper):
         default="LIN",
     )
 
+    invert_uv_v: BoolProperty(
+        name="Invert UV",
+        description="Invert the v coordinate of uvs, i.e. export (u, 1 - v)",
+        default=False,
+    )
+
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf(self, context, **keywords)
@@ -168,6 +174,7 @@ class SMF_PT_export_general(bpy.types.Panel):
         operator = sfile.active_operator
 
         layout.prop(operator, 'export_textures')
+        layout.prop(operator, "invert_uv_v")
 
 
 class SMF_PT_export_advanced(bpy.types.Panel):

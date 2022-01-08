@@ -109,6 +109,7 @@ def export_smf(operator, context,
                subdivisions,
                interpolation,
                normal_source,
+               invert_uv_v,
                **kwargs,
                ):
     """
@@ -318,6 +319,8 @@ def export_smf(operator, context,
                 if normal_source == "FACE":
                     normal = face.normal
                 uv = uv_data[loop.index].uv if uv_data else [0, 0]
+                if invert_uv_v:
+                    uv[1] = 1 - uv[1]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
                 vertex_data.extend(vert.co)
