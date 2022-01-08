@@ -5,4 +5,5 @@ Export of Blender model to [SMF model format](https://forum.yoyogames.com/index.
 See the wiki's [How To Use](https://github.com/blender-to-gmstudio/blender-to-smf/wiki/How-To-Use) page for detailed documentation.
 
 ## Format
-TODO
+The current version of the format is SMF v10.
+It is described on the wiki's [SMF Format](https://github.com/blender-to-gmstudio/blender-to-smf/wiki/SMF-Format) page.
