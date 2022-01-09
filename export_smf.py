@@ -47,6 +47,9 @@ def prep_mesh(obj, obj_rig, mesh):
     bm.to_mesh(mesh)
     bm.free()
 
+    # Calculate split normals
+    mesh.calc_normals_split()
+
 def smf_node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
     # TODO Insert root node (optional?)
@@ -271,7 +274,9 @@ def export_smf(operator, context,
         # This includes modifiers, etc.
         # The world transform is not applied to the mesh
         obj_eval = obj.evaluated_get(dg)
-        mesh = bpy.data.meshes.new_from_object(obj_eval)
+        mesh = bpy.data.meshes.new_from_object(obj_eval, preserve_all_data_layers=True, depsgraph=dg)
+        # mesh.calc_normals()
+        # mesh.calc_normals_split()
         prep_mesh(obj, rig_object, mesh)
 
         # Reset pose_position setting
@@ -311,20 +316,27 @@ def export_smf(operator, context,
                 vertex_data = []
 
                 vert = mesh.vertices[loop.vertex_index]
-
+                """
                 if normal_source == "VERT":
                     normal = vert.normal
                 if normal_source == "LOOP":
                     normal = loop.normal
                 if normal_source == "FACE":
-                    normal = face.normal
+                    normal = face.normal"""
+
                 uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 if invert_uv_v:
                     uv[1] = 1 - uv[1]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
+                # Determine the correct normal to export
+                if mesh.use_auto_smooth:
+                    normal = vert.normal
+                else:
+                    normal = face.normal
+
                 vertex_data.extend(vert.co)
-                vertex_data.extend(vert.normal)
+                vertex_data.extend(normal)
                 vertex_data.extend(uv)
                 vertex_data.extend(tan_int)
                 vertex_data.extend(skin_indices[vert.index])
