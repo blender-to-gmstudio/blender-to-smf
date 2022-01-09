@@ -101,6 +101,7 @@ class ExportSMF(Operator, ExportHelper):
         soft_max=20,
     )
 
+    """
     normal_source: EnumProperty(
         name="Normal",
         description="The type of normal to export (vertex, loop, face)",
@@ -111,6 +112,7 @@ class ExportSMF(Operator, ExportHelper):
         ],
         default="VERT",
     )
+    """
 
     subdivisions: IntProperty(
         name="Subdivisions",
@@ -209,7 +211,7 @@ class SMF_PT_export_advanced(bpy.types.Panel):
             layout.prop(operator, 'subdivisions')
 
         layout.label(text="Other")
-        layout.prop(operator, "normal_source")
+        #layout.prop(operator, "normal_source")
         layout.prop(operator, 'interpolation')
         layout.prop(operator, 'multiplier')
         #layout.prop(operator, "scale")
