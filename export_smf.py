@@ -111,7 +111,7 @@ def export_smf(operator, context,
                multiplier,
                subdivisions,
                interpolation,
-               normal_source,
+               #normal_source,
                invert_uv_v,
                **kwargs,
                ):
