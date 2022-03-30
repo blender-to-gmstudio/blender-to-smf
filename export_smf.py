@@ -203,10 +203,7 @@ def export_smf(operator, context,
                     connected = True
                     bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
 
-                matrix = b.matrix_local.copy()
-                matrix.translation = b.tail_local[:]
-
-                name = b.name
+                position_attr = 'tail_local'
             else:
                 # This is one of the inserted nodes
                 b = bones[n+1]
@@ -214,10 +211,11 @@ def export_smf(operator, context,
                 parent_bone_index = 0 if not b.parent else bones.index(b.parent)
                 connected = b.use_connect
 
-                matrix = b.matrix_local.copy()
-                matrix.translation = b.head_local[:]
+                position_attr = 'head_local'
 
-                name = "Inserted for " + b.name
+            # Construct node matrix
+            matrix = b.matrix_local.copy()
+            matrix.translation = getattr(b, position_attr)[:]
 
             # Add the world transform to the nodes, ignore scale
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
@@ -232,6 +230,7 @@ def export_smf(operator, context,
             rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
 
             t = mat_w.translation
+            name = b.name if position_attr == 'tail_local' else "Inserted for " + b.name
             debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
             debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
 
