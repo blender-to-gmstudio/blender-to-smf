@@ -1,6 +1,6 @@
 # SMF export scripts for Blender
 #
-#from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
+from .pydq import dq_create_matrix, dq_to_tuple_xyzw
 import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
@@ -422,6 +422,13 @@ def export_smf(operator, context,
 
                 mat.translation = bone.tail[:]
                 mat_final = apply_world_matrix(mat, rig_object.matrix_world)
+                mat_final.normalize()
+                m = mat_final.to_3x3()
+                dq = dq_create_matrix(mat_final)
+                print(m)
+                print(dq_to_tuple_xyzw(dq))
+                # print(m.is_orthogonal)
+                # print(m.is_orthogonal_axis_vectors)
                 vals = [j for i in mat_final.col for j in i]
                 byte_data.extend(pack('f'*16, *vals))
 
