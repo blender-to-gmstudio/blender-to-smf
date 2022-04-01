@@ -77,10 +77,25 @@ def dq_normalize(dq):
     dq.dual[3] = (dq.dual[3] - dq.real[3] * d) * l
     return dq
 
+def dq_negate(dq):
+    """Negate a dual quaternion"""
+    dq.real.negate()
+    dq.dual.negate()
+    return dq
+
+def dq_invert(dq):
+    """Invert a dual quaternion"""
+    pass
+
 def dq_to_tuple_xyzw(dq):
-    """Return the tuple representation of the given DQ for use with SMF"""
+    """Return the tuple representation of the given DQ with w last (e.g. for use with SMF)"""
     return (dq.real.x, dq.real.y, dq.real.z, dq.real.w,
             dq.dual.x, dq.dual.y, dq.dual.z, dq.dual.w,)
+
+def dq_to_tuple_wxyz(dq):
+    """Return the tuple representation of the given DQ with w first"""
+    return (dq.real.w, dq.real.x, dq.real.y, dq.real.z,
+            dq.dual.w, dq.dual.x, dq.dual.y, dq.dual.z,)
 
 def dq_get_translation(dq):
     pass

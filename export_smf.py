@@ -1,6 +1,6 @@
 # SMF export scripts for Blender
 #
-from .pydq import dq_create_matrix, dq_to_tuple_xyzw
+from .pydq import dq_create_matrix, dq_negate, dq_to_tuple_xyzw
 import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
@@ -423,10 +423,10 @@ def export_smf(operator, context,
                 mat.translation = bone.tail[:]
                 mat_final = apply_world_matrix(mat, rig_object.matrix_world)
                 mat_final.normalize()
-                m = mat_final.to_3x3()
-                dq = dq_create_matrix(mat_final)
-                print(m)
+                dq = dq_negate(dq_create_matrix(mat_final)) # negate != invert (!!)
                 print(dq_to_tuple_xyzw(dq))
+                # m = mat_final.to_3x3()  # Verify orthogonality of upper 3x3
+                # print(m)
                 # print(m.is_orthogonal)
                 # print(m.is_orthogonal_axis_vectors)
                 vals = [j for i in mat_final.col for j in i]
