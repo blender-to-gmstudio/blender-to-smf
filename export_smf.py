@@ -1,6 +1,6 @@
 # SMF export scripts for Blender
 #
-from .pydq import dq_create_matrix, dq_negate, dq_to_tuple_xyzw
+from .pydq import dq_create_matrix, dq_get_product, dq_negate, dq_to_tuple_xyzw
 import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
@@ -425,6 +425,9 @@ def export_smf(operator, context,
                 mat_final.normalize()
                 dq = dq_negate(dq_create_matrix(mat_final)) # negate != invert (!!)
                 print(dq_to_tuple_xyzw(dq))
+
+                # TODO fix_keyframe_dq should go here...
+
                 # m = mat_final.to_3x3()  # Verify orthogonality of upper 3x3
                 # print(m)
                 # print(m.is_orthogonal)
@@ -533,6 +536,23 @@ def export_smf(operator, context,
         file.write(animation_bytes)
 
     return {'FINISHED'}
+
+def fix_keyframe_dq(dq, frame_index, node_index):
+    """Fix the keyframe DQ to make sure the animation doesn't look choppy"""
+    if node_index > 0:
+        pose_local_dq = dq_multiply(dq_get_conjugate())
+        dq = dq_multiply(local_dq_conj, pose_local_dq)
+
+        if frame_index == 0:
+            if dq[3] < 0:
+                dq_negate(dq)
+        else:
+            if dot(prevframe.real, dq.real):
+                dq_negate(dq)
+    else:
+        dq = dq_get_product(world_dq_conjugate, dq)
+
+    return dq
 
 def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
