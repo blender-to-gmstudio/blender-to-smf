@@ -217,9 +217,10 @@ def export_smf(operator, context,
             print(dq_to_tuple_xyzw(dq))
 
             # Construct a list containing matrix values in the right order
-            vals = [j for i in mat_w.col for j in i]
+            # vals = [j for i in mat_w.col for j in i]
+            vals = dq_to_tuple_xyzw(dq)
 
-            rig_bytes.extend(pack('f'*16, *vals))
+            rig_bytes.extend(pack('f'*len(vals), *vals))
             rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
             rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
             rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
@@ -440,8 +441,9 @@ def export_smf(operator, context,
                 # print(m)
                 # print(m.is_orthogonal)
                 # print(m.is_orthogonal_axis_vectors)
-                vals = [j for i in mat_final.col for j in i]
-                byte_data.extend(pack('f'*16, *vals))
+                # vals = [j for i in mat_final.col for j in i]
+                vals = dq_to_tuple_xyzw(dq)
+                byte_data.extend(pack('f'*len(vals), *vals))
 
         # Restore frame position
         scene.frame_set(frame_prev)
@@ -548,14 +550,14 @@ def export_smf(operator, context,
 def fix_keyframe_dq(dq, frame_index, node_index):
     """Fix the keyframe DQ to make sure the animation doesn't look choppy"""
     if node_index > 0:
-        pose_local_dq = dq_multiply(dq_get_conjugate())
+        pose_local_dq = dq_multiply(dq_get_conjugate(dq), dq)
         dq = dq_multiply(local_dq_conj, pose_local_dq)
 
         if frame_index == 0:
             if dq[3] < 0:
                 dq_negate(dq)
         else:
-            if dot(prevframe.real, dq.real):
+            if prevframe.real.dot(dq.real) < 0:
                 dq_negate(dq)
     else:
         dq = dq_get_product(world_dq_conjugate, dq)
