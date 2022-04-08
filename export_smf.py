@@ -1,11 +1,18 @@
 # SMF export scripts for Blender
 #
-from .pydq import dq_create_matrix, dq_get_product, dq_negate, dq_to_tuple_xyzw
 import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
 from os import path
+
+from .pydq import (
+    dq_create_matrix,
+    dq_get_product,
+    dq_get_conjugate,
+    dq_negate,
+    dq_to_tuple_xyzw,
+)
 
 SMF_version = 10    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
@@ -187,6 +194,7 @@ def export_smf(operator, context,
         print("---")
         debug_rig = []
         debug_vals = []
+        dqs = []
         # Make sure to have a root bone!
         for n, bone in enumerate(bones):
             b = bone if bone else bones[n+1]
@@ -208,13 +216,26 @@ def export_smf(operator, context,
             # Add the world transform to the nodes, ignore scale
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
 
-            m = mat_w.to_3x3()  # Verify orthogonality of upper 3x3
-            print(m)
-            print(m.is_orthogonal)
-            print(m.is_orthogonal_axis_vectors)
+            # m = mat_w.to_3x3()  # Verify orthogonality of upper 3x3
+            # print(m)
+            # print(m.is_orthogonal)
+            # print(m.is_orthogonal_axis_vectors)
+
+            print(n)
 
             dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
             print(dq_to_tuple_xyzw(dq))
+
+            if b.parent:
+                # Update node (see SMF's smf_rig.update_node)
+                dq_conj = dq_get_conjugate(dq)
+                print(dq_to_tuple_xyzw(dq_conj))
+                dq_local = dq_get_product(dqs[parent_bone_index], dq)
+                print(dq_to_tuple_xyzw(dq_local))
+                dq_local_conj = dq_get_conjugate(dq_local)
+                print(dq_to_tuple_xyzw(dq_local_conj))
+
+            dqs.append(dq)
 
             # Construct a list containing matrix values in the right order
             # vals = [j for i in mat_w.col for j in i]
@@ -560,6 +581,7 @@ def fix_keyframe_dq(dq, frame_index, node_index):
             if prevframe.real.dot(dq.real) < 0:
                 dq_negate(dq)
     else:
+        world_dq_conjugate = dq_get_conjugate(rig_dq)
         dq = dq_get_product(world_dq_conjugate, dq)
 
     return dq
