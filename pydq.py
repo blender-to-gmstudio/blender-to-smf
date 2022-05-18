@@ -78,10 +78,14 @@ def dq_normalize(dq):
     return dq
 
 def dq_negate(dq):
-    """Negate a dual quaternion"""
+    """Negate a dual quaternion, i.e. negate both real and dual components"""
     dq.real.negate()
     dq.dual.negate()
     return dq
+
+def dq_negated(dq):
+    """Return a new dual quaternion that is the negated dual quaternion"""
+    return DQ(-dq.real, -dq.dual)
 
 def dq_invert(dq):
     """Invert a dual quaternion"""
