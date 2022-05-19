@@ -575,7 +575,7 @@ def fix_keyframe_dq(dq, frame_index, node_index):
         dq = dq_multiply(local_dq_conj, pose_local_dq)
 
         if frame_index == 0:
-            if dq[3] < 0:
+            if dq.real.w < 0:
                 dq_negate(dq)
         else:
             if prevframe.real.dot(dq.real) < 0:
