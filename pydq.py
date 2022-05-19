@@ -3,11 +3,15 @@
 # DQs are stored as a named tuple of 2 Quaternions
 # and can be converted to a tuple for export to SMF using dq_to_tuple_xyzw
 #
-import bpy
 from collections import namedtuple
 from mathutils import Quaternion
 
-DQ = namedtuple('DQ', 'real dual')
+# TODO Derive from typing.NamedTuple? Use dataclasses.dataclass?
+DQ = namedtuple(
+    'DQ',
+    "real dual",
+    defaults=[Quaternion(), Quaternion((0, 0, 0, 0))]
+)
 
 def dq_create_identity():
     """Return a new identity DQ"""
