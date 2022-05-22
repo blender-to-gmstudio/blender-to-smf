@@ -95,6 +95,10 @@ def dq_invert(dq):
     """Invert a dual quaternion"""
     pass
 
+def quat_to_tuple_xyzw(quat):
+    """Convert a mathutils.Quaternion to a tuple with components ordered xyzw"""
+    return (quat.x, quat.y, quat.z, quat.w)
+
 def dq_to_tuple_xyzw(dq):
     """Return the tuple representation of the given DQ with w last (e.g. for use with SMF)"""
     return (dq.real.x, dq.real.y, dq.real.z, dq.real.w,
