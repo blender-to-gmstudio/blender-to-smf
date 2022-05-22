@@ -541,9 +541,9 @@ def export_smf(operator, context,
             track.mute = mute_prev[i]
 
     # Now build header
-    header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
+    header_bytes = bytearray("SMF_v11_by_Snidr_and_Bart\0", 'utf-8')
 
-    tex_pos = len(header_bytes) + calcsize('IIIIII')
+    tex_pos = len(header_bytes) + calcsize('IIIII')
     mod_pos = tex_pos + len(texture_bytes)
     rig_pos = mod_pos + len(model_bytes)
     ani_pos = rig_pos + len(rig_bytes)
