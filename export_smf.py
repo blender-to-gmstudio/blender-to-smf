@@ -604,6 +604,11 @@ def apply_world_matrix(matrix, matrix_world):
 
     return mat_w
 
+def transform_matrix_to_smf(matrix):
+    """"""
+    # TODO Split up the two transforms properly (see apply_world_matrix)
+    pass
+
 def texture_image_from_node_tree(material):
     "Try to get a texture Image from the given material's node tree"
     if not material.use_nodes:
