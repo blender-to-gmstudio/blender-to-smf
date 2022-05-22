@@ -16,7 +16,7 @@ from .pydq import (
     dq_to_tuple_xyzw,
 )
 
-SMF_version = 10    # SMF 'export' version
+SMF_version = 11    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
