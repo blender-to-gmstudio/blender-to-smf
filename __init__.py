@@ -2,11 +2,11 @@ bl_info = {
     "name": "Export SMF",
     "description": "Export to SMF 10 (SnidrsModelFormat)",
     "author": "Bart Teunis",
-    "version": (0, 8, 1),
+    "version": (0, 9, 0),
     "blender": (2, 80, 0),
     "location": "File > Export",
-    "warning": "", # used for warning icon and text in addons panel
-    "wiki_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",
+    "warning": "",  # used for warning icon and text in addons panel
+    "doc_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",
     "tracker_url": "https://github.com/blender-to-gmstudio/blender-to-smf/issues",
     "category": "Import-Export"}
 
@@ -21,9 +21,10 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator
 
+
 class ImportSMF(Operator, ImportHelper):
     """Import an SMF 3D model"""
-    bl_idname="import_scene.smf"
+    bl_idname = "import_scene.smf"
     bl_label = "SMF (*.smf)"
     bl_options = {'REGISTER'}
 
@@ -38,6 +39,7 @@ class ImportSMF(Operator, ImportHelper):
     def execute(self, context):
         return import_smf(self.filepath)
 
+
 class ExportSMF(Operator, ExportHelper):
     """Export a selection of the current scene to SMF (SnidrsModelFormat)"""
     bl_idname = "export_scene.smf"
@@ -47,31 +49,31 @@ class ExportSMF(Operator, ExportHelper):
     # ExportHelper mixin class uses this
     filename_ext = ".smf"
 
-    filter_glob : StringProperty(
+    filter_glob: StringProperty(
         default="*.smf",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    export_textures : BoolProperty(
+    export_textures: BoolProperty(
         name="Export Textures",
         description="Whether textures should be exported with the model",
         default=True,
     )
 
     # "Advanced" export settings
-    anim_export_mode : EnumProperty(
+    anim_export_mode: EnumProperty(
         name="What to export",
         description="How to export animations",
         items=[
-            ("CUR","Current Action", "Export the Armature's current action as a single animation", 0),
-            ("LNK","Linked NLA Actions", "Export all (unique) actions that are linked indirectly through NLA tracks", 1),
-            #("TRA","NLA Tracks", "Export every NLA track as a separate animation", 2),
-            #("SCN","Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
+            ("CUR", "Current Action", "Export the Armature's current action as a single animation", 0),
+            ("LNK", "Linked NLA Actions", "Export all (unique) actions that are linked indirectly through NLA tracks", 1),
+            #("TRA", "NLA Tracks", "Export every NLA track as a separate animation", 2),
+            #("SCN", "Scene", "Export a single animation directly from the scene. This allows for the most advanced animations", 3),
         ],
         default="CUR",
     )
-    anim_length_mode : EnumProperty(
+    anim_length_mode: EnumProperty(
         name="Animation Length",
         description="What value to use for the exported animation lengths",
         items=[
@@ -81,7 +83,7 @@ class ExportSMF(Operator, ExportHelper):
         default="SCN",
     )
 
-    export_type : EnumProperty(
+    export_type: EnumProperty(
         name="Export Type",
         description="What to export",
         items=[
@@ -91,7 +93,7 @@ class ExportSMF(Operator, ExportHelper):
         default="KFR",
     )
 
-    multiplier : IntProperty(
+    multiplier: IntProperty(
         name="Sample Frame Multiplier",
         description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
         default=4,
@@ -99,7 +101,20 @@ class ExportSMF(Operator, ExportHelper):
         soft_max=20,
     )
 
-    subdivisions : IntProperty(
+    """
+    normal_source: EnumProperty(
+        name="Normal",
+        description="The type of normal to export (vertex, loop, face)",
+        items=[
+            ("VERT", "Vertex", "Vertex normal", 0),
+            ("LOOP", "Loop", "Loop normal", 1),
+            ("FACE", "Face", "Face normal", 2),
+        ],
+        default="VERT",
+    )
+    """
+
+    subdivisions: IntProperty(
         name="Subdivisions",
         description="Number of times to subdivide an animation when exporting samples. This subdivision is made for each animation individually.",
         default=10,
@@ -124,6 +139,12 @@ class ExportSMF(Operator, ExportHelper):
         default="LIN",
     )
 
+    invert_uv_v: BoolProperty(
+        name="Invert UV",
+        description="Invert the v coordinate of uvs, i.e. export (u, 1 - v)",
+        default=False,
+    )
+
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf(self, context, **keywords)
@@ -131,6 +152,7 @@ class ExportSMF(Operator, ExportHelper):
     def draw(self, context):
         # Everything gets displayed through the panels that are defined below
         pass
+
 
 class SMF_PT_export_general(bpy.types.Panel):
     bl_space_type = 'FILE_BROWSER'
@@ -154,12 +176,15 @@ class SMF_PT_export_general(bpy.types.Panel):
         operator = sfile.active_operator
 
         layout.prop(operator, 'export_textures')
+        layout.prop(operator, "invert_uv_v")
+
 
 class SMF_PT_export_advanced(bpy.types.Panel):
     bl_space_type = 'FILE_BROWSER'
     bl_region_type = 'TOOL_PROPS'
     bl_label = "Advanced"
     bl_parent_id = "FILE_PT_operator"
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(cls, context):
@@ -186,9 +211,11 @@ class SMF_PT_export_advanced(bpy.types.Panel):
             layout.prop(operator, 'subdivisions')
 
         layout.label(text="Other")
+        #layout.prop(operator, "normal_source")
         layout.prop(operator, 'interpolation')
         layout.prop(operator, 'multiplier')
         #layout.prop(operator, "scale")
+
 
 def menu_func_export(self, context):
     self.layout.operator(ExportSMF.bl_idname, text="SMF (*.smf)")
@@ -204,6 +231,7 @@ classes = (
     ExportSMF,
     ImportSMF,  # Uncomment this to enable the WIP importer
 )
+
 
 def register():
     for cls in classes:
