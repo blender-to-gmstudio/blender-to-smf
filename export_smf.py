@@ -6,6 +6,8 @@ from mathutils import *
 from math import *
 from os import path
 
+# from .debug import format_iterable, print_dq_list
+
 from .pydq import (
     dq_create_matrix,
     dq_get_product,
@@ -165,10 +167,6 @@ def export_smf(operator, context,
     bindmap = {}
     bone_names = []
 
-    # Write an empty chunk for materials
-    material_bytes = bytearray()
-    material_bytes.extend(pack('B', 0))
-
     # Write rig
     rig_bytes = bytearray()
 
@@ -194,7 +192,6 @@ def export_smf(operator, context,
         print("---")
         debug_rig = []
         debug_vals = []
-        dqs = []
         # Make sure to have a root bone!
         for n, bone in enumerate(bones):
             b = bone if bone else bones[n+1]
@@ -221,21 +218,19 @@ def export_smf(operator, context,
             # print(m.is_orthogonal)
             # print(m.is_orthogonal_axis_vectors)
 
-            print(n)
+            # print(n)
+            #
+            # dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
+            # print(format_iterable(dq_to_tuple_xyzw(dq)))
 
-            dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
-            print(dq_to_tuple_xyzw(dq))
-
-            if b.parent:
-                # Update node (see SMF's smf_rig.update_node)
-                dq_conj = dq_get_conjugate(dq)
-                print(dq_to_tuple_xyzw(dq_conj))
-                dq_local = dq_get_product(dqs[parent_bone_index], dq)
-                print(dq_to_tuple_xyzw(dq_local))
-                dq_local_conj = dq_get_conjugate(dq_local)
-                print(dq_to_tuple_xyzw(dq_local_conj))
-
-            dqs.append(dq)
+            # if b.parent:
+            #    # Update node (see SMF's smf_rig.update_node)
+            #    dq_conj = dq_get_conjugate(dq)
+            #    print(dq_to_tuple_xyzw(dq_conj))
+            #    dq_local = dq_get_product(dqs[parent_bone_index], dq)
+            #    print(dq_to_tuple_xyzw(dq_local))
+            #    dq_local_conj = dq_get_conjugate(dq_local)
+            #    print(dq_to_tuple_xyzw(dq_local_conj))
 
             # Construct a list containing matrix values in the right order
             # vals = [j for i in mat_w.col for j in i]
@@ -439,6 +434,7 @@ def export_smf(operator, context,
             # Loop through the armature's PoseBones using the bone/node order we got earlier
             # This guarantees a correct mapping of PoseBones to Bones
             #for rbone in rig_object.data.bones:
+            # for i, rbone in enumerate(bones):
             for rbone in bones:
                 if rbone:
                     # Get the bone (The name is identical (!))
@@ -454,7 +450,7 @@ def export_smf(operator, context,
                 mat_final = apply_world_matrix(mat, rig_object.matrix_world)
                 mat_final.normalize()
                 dq = dq_negate(dq_create_matrix(mat_final)) # negate != invert (!!)
-                print(dq_to_tuple_xyzw(dq))
+                # print(format_iterable(dq_to_tuple_xyzw(dq)))
 
                 # TODO fix_keyframe_dq should go here...
 
@@ -536,6 +532,7 @@ def export_smf(operator, context,
             interpolation = 1
         if interpolation == "QAD":
             interpolation = 2
+
         write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
 
         # Restore to previous state
@@ -547,12 +544,11 @@ def export_smf(operator, context,
     header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
 
     tex_pos = len(header_bytes) + calcsize('IIIIII')
-    mat_pos = tex_pos + len(texture_bytes)
-    mod_pos = mat_pos + len(material_bytes)
+    mod_pos = tex_pos + len(texture_bytes)
     rig_pos = mod_pos + len(model_bytes)
     ani_pos = rig_pos + len(rig_bytes)
-    offsets = (tex_pos, mat_pos, mod_pos, rig_pos, ani_pos)
-    header_bytes.extend(pack('IIIII', *offsets))
+    offsets = (tex_pos, mod_pos, rig_pos, ani_pos)
+    header_bytes.extend(pack('I' * len(offsets), *offsets))
 
     placeholder_byte = 0
     header_bytes.extend(pack('I', placeholder_byte))
@@ -561,7 +557,6 @@ def export_smf(operator, context,
     with open(filepath, "wb") as file:
         file.write(header_bytes)
         file.write(texture_bytes)
-        file.write(material_bytes)
         file.write(model_bytes)
         file.write(rig_bytes)
         file.write(animation_bytes)
