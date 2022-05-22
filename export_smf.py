@@ -174,7 +174,7 @@ def export_smf(operator, context,
 
     if not rig:
         # No (valid) armature for export
-        rig_bytes.extend(pack('B', 0))
+        rig_bytes.extend(pack('I', 0))                              # nodeNum
     else:
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
@@ -184,7 +184,7 @@ def export_smf(operator, context,
         bindmap = smf_bindmap(bones)
         bone_names = bindmap.keys()
 
-        rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
+        rig_bytes.extend(pack('I', len(bones)))                     # nodeNum
 
         if not rig.bones:
             #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
@@ -242,7 +242,7 @@ def export_smf(operator, context,
             vals = dq_to_tuple_xyzw(dq)
 
             rig_bytes.extend(pack('f'*len(vals), *vals))
-            rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+            rig_bytes.extend(pack('I',parent_bone_index))       # node[@ eAnimNode.Parent]
             rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
             rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
             rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
