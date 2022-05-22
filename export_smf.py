@@ -1,13 +1,22 @@
 # SMF export scripts for Blender
 #
-#from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
 import bpy
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
 from os import path
 
-SMF_version = 10    # SMF 'export' version
+# from .debug import format_iterable, print_dq_list
+
+from .pydq import (
+    dq_create_matrix,
+    dq_get_product,
+    dq_get_conjugate,
+    dq_negate,
+    dq_to_tuple_xyzw,
+)
+
+SMF_version = 11    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
@@ -158,16 +167,12 @@ def export_smf(operator, context,
     bindmap = {}
     bone_names = []
 
-    # Write an empty chunk for materials
-    material_bytes = bytearray()
-    material_bytes.extend(pack('B', 0))
-
     # Write rig
     rig_bytes = bytearray()
 
     if not rig:
         # No (valid) armature for export
-        rig_bytes.extend(pack('B', 0))
+        rig_bytes.extend(pack('I', 0))                              # nodeNum
     else:
         # Construct node list for SMF
         # (heads of disconnected bones need to become nodes, too)
@@ -177,7 +182,7 @@ def export_smf(operator, context,
         bindmap = smf_bindmap(bones)
         bone_names = bindmap.keys()
 
-        rig_bytes.extend(pack('B',len(bones)))                      # nodeNum
+        rig_bytes.extend(pack('I', len(bones)))                     # nodeNum
 
         if not rig.bones:
             #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
@@ -208,11 +213,31 @@ def export_smf(operator, context,
             # Add the world transform to the nodes, ignore scale
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
 
-            # Construct a list containing matrix values in the right order
-            vals = [j for i in mat_w.col for j in i]
+            # m = mat_w.to_3x3()  # Verify orthogonality of upper 3x3
+            # print(m)
+            # print(m.is_orthogonal)
+            # print(m.is_orthogonal_axis_vectors)
 
-            rig_bytes.extend(pack('f'*16, *vals))
-            rig_bytes.extend(pack('B',parent_bone_index))       # node[@ eAnimNode.Parent]
+            # print(n)
+            #
+            dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
+            # print(format_iterable(dq_to_tuple_xyzw(dq)))
+
+            # if b.parent:
+            #    # Update node (see SMF's smf_rig.update_node)
+            #    dq_conj = dq_get_conjugate(dq)
+            #    print(dq_to_tuple_xyzw(dq_conj))
+            #    dq_local = dq_get_product(dqs[parent_bone_index], dq)
+            #    print(dq_to_tuple_xyzw(dq_local))
+            #    dq_local_conj = dq_get_conjugate(dq_local)
+            #    print(dq_to_tuple_xyzw(dq_local_conj))
+
+            # Construct a list containing matrix values in the right order
+            # vals = [j for i in mat_w.col for j in i]
+            vals = dq_to_tuple_xyzw(dq)
+
+            rig_bytes.extend(pack('f'*len(vals), *vals))
+            rig_bytes.extend(pack('I',parent_bone_index))       # node[@ eAnimNode.Parent]
             rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
             rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
             rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
@@ -409,6 +434,7 @@ def export_smf(operator, context,
             # Loop through the armature's PoseBones using the bone/node order we got earlier
             # This guarantees a correct mapping of PoseBones to Bones
             #for rbone in rig_object.data.bones:
+            # for i, rbone in enumerate(bones):
             for rbone in bones:
                 if rbone:
                     # Get the bone (The name is identical (!))
@@ -422,8 +448,19 @@ def export_smf(operator, context,
 
                 mat.translation = bone.tail[:]
                 mat_final = apply_world_matrix(mat, rig_object.matrix_world)
-                vals = [j for i in mat_final.col for j in i]
-                byte_data.extend(pack('f'*16, *vals))
+                mat_final.normalize()
+                dq = dq_negate(dq_create_matrix(mat_final)) # negate != invert (!!)
+                # print(format_iterable(dq_to_tuple_xyzw(dq)))
+
+                # TODO fix_keyframe_dq should go here...
+
+                # m = mat_final.to_3x3()  # Verify orthogonality of upper 3x3
+                # print(m)
+                # print(m.is_orthogonal)
+                # print(m.is_orthogonal_axis_vectors)
+                # vals = [j for i in mat_final.col for j in i]
+                vals = dq_to_tuple_xyzw(dq)
+                byte_data.extend(pack('f'*len(vals), *vals))
 
         # Restore frame position
         scene.frame_set(frame_prev)
@@ -495,6 +532,7 @@ def export_smf(operator, context,
             interpolation = 1
         if interpolation == "QAD":
             interpolation = 2
+
         write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
 
         # Restore to previous state
@@ -503,15 +541,14 @@ def export_smf(operator, context,
             track.mute = mute_prev[i]
 
     # Now build header
-    header_bytes = bytearray("SMF_v10_by_Snidr_and_Bart\0", 'utf-8')
+    header_bytes = bytearray("SMF_v11_by_Snidr_and_Bart\0", 'utf-8')
 
-    tex_pos = len(header_bytes) + calcsize('IIIIII')
-    mat_pos = tex_pos + len(texture_bytes)
-    mod_pos = mat_pos + len(material_bytes)
+    tex_pos = len(header_bytes) + calcsize('IIIII')
+    mod_pos = tex_pos + len(texture_bytes)
     rig_pos = mod_pos + len(model_bytes)
     ani_pos = rig_pos + len(rig_bytes)
-    offsets = (tex_pos, mat_pos, mod_pos, rig_pos, ani_pos)
-    header_bytes.extend(pack('IIIII', *offsets))
+    offsets = (tex_pos, mod_pos, rig_pos, ani_pos)
+    header_bytes.extend(pack('I' * len(offsets), *offsets))
 
     placeholder_byte = 0
     header_bytes.extend(pack('I', placeholder_byte))
@@ -520,12 +557,29 @@ def export_smf(operator, context,
     with open(filepath, "wb") as file:
         file.write(header_bytes)
         file.write(texture_bytes)
-        file.write(material_bytes)
         file.write(model_bytes)
         file.write(rig_bytes)
         file.write(animation_bytes)
 
     return {'FINISHED'}
+
+def fix_keyframe_dq(dq, frame_index, node_index):
+    """Fix the keyframe DQ to make sure the animation doesn't look choppy"""
+    if node_index > 0:
+        pose_local_dq = dq_multiply(dq_get_conjugate(dq), dq)
+        dq = dq_multiply(local_dq_conj, pose_local_dq)
+
+        if frame_index == 0:
+            if dq.real.w < 0:
+                dq_negate(dq)
+        else:
+            if prevframe.real.dot(dq.real) < 0:
+                dq_negate(dq)
+    else:
+        world_dq_conjugate = dq_get_conjugate(rig_dq)
+        dq = dq_get_product(world_dq_conjugate, dq)
+
+    return dq
 
 def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
