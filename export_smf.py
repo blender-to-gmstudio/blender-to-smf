@@ -220,7 +220,7 @@ def export_smf(operator, context,
 
             # print(n)
             #
-            # dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
+            dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
             # print(format_iterable(dq_to_tuple_xyzw(dq)))
 
             # if b.parent:
