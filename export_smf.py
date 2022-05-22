@@ -423,7 +423,7 @@ def export_smf(operator, context,
         frame_prev = scene.frame_current
         for kf_time in keyframe_times:
             subframe, frame = modf(kf_time)
-            scene.frame_set(frame, subframe=subframe)
+            scene.frame_set(int(frame), subframe=subframe)
 
             smf_kf_time = kf_time/frame_max
 
@@ -463,7 +463,7 @@ def export_smf(operator, context,
                 byte_data.extend(pack('f'*len(vals), *vals))
 
         # Restore frame position
-        scene.frame_set(frame_prev)
+        scene.frame_set(int(frame_prev))
 
     # Export each NLA track linked to the armature object as an animation
     # (use the first action's name as the animation name for now)
