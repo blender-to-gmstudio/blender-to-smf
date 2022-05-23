@@ -163,6 +163,10 @@ def export_smf(operator, context,
             else:
                 pass
 
+    # Make sure we don't try to export actions that look like they're linked
+    # but don't exist anymore
+    animations.discard(None)
+
     # Initalize variables that we need across chunks
     bindmap = {}
     bone_names = []
@@ -499,6 +503,8 @@ def export_smf(operator, context,
 
     animation_bytes.extend(pack('B', len(animations)))
     for anim in animations:
+        print(anim)
+
         # Remember state
         anim_data = rig_object.animation_data
         action_prev = anim_data.action
