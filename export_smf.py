@@ -6,6 +6,8 @@ from mathutils import *
 from math import *
 from os import path
 
+import numpy as np
+
 # from .debug import format_iterable, print_dq_list
 
 from .pydq import (
@@ -394,19 +396,20 @@ def export_smf(operator, context,
     if export_textures:
         texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
         for img in unique_images:
-            channels, item_number = img.channels, len(img.pixels)
-            pixel_data = img.pixels[:]                                  # https://blender.stackexchange.com/questions/3673/why-is-accessing-image-data-so-slow
-            # TODO Image.pixels.foreach_get??
-
             texture_bytes.extend(bytearray(img.name + "\0",'utf-8'))    # Texture name
             texture_bytes.extend(pack('HH', *img.size))                 # Texture size (w,h)
 
+            # TODO Proper solution to this, ideally extend texture dimensions
             for cpo in img.size:
                 if floor(log2(cpo)) != log2(cpo):
                     operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
 
-            bytedata = [floor(component*255) for component in pixel_data]
-            texture_bytes.extend(pack('B'*item_number, *bytedata))
+            # Faster way using NumPy
+            image_data = np.fromiter(img.pixels, dtype = np.float)
+            image_data = (image_data * 255).round().astype(np.ubyte)
+            bytedata = image_data.tobytes()
+
+            texture_bytes.extend(pack('B' * len(img.pixels), *bytedata))
     else:
         texture_bytes.extend(pack('B', 0))
 
