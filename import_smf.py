@@ -199,15 +199,16 @@ def import_smf(filepath):
     # Read rig info and construct armature
     node_num = unpack_from("B", data, offset = rigPos)[0]
     if node_num > 0:
+
+        # Create armature
         bpy.ops.object.armature_add(enter_editmode=True)
-        print("Meeeh")
         armature_object = bpy.data.objects[-1:][0]
         armature = armature_object.data
         bpy.ops.armature.select_all(action='SELECT')
         bpy.ops.armature.delete()   # Delete default bone
 
+        # Add the bones
         bone_list = []
-
         item_bytesize = calcsize("ffffffffBB")
         print("Number of nodes", node_num)
         for node_index in range(node_num):
@@ -220,17 +221,19 @@ def import_smf(filepath):
             new_bone = bpy.context.object.data.edit_bones[-1:][0]
             bone_list.append(new_bone)
 
-            """
-            rot_quat = Quaternion((dq[3], dq[0], dq[1], dq[2]))
-            tr_quat = Quaternion((dq[7], dq[4], dq[5], dq[6]))
-            dq_nt = dq_create_iterable(dq, w_last = True)  # SMF puts w last
-            new_tail = Vector((2 * (tr_quat @ rot_quat.conjugated()))[1:4])
+            # Old attempt
+            # """
+            new_tail = Vector((2 * (dq.dual @ dq.real.conjugated()))[1:4])
             if bone_list and parent_bone_index >= 0:
                 new_bone.parent = bone_list[parent_bone_index]
                 new_bone.use_connect = is_bone
             new_bone.tail = new_tail
             print(new_bone.matrix, new_bone.tail[:])
-            """
+            # """
+
+            # New attempt: do the exporter's conversion backwards
+            # TODO!
+
 
         bpy.ops.armature.select_all(action='DESELECT')
         for bone in bpy.context.object.data.edit_bones:
