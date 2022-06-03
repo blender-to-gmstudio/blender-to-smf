@@ -79,17 +79,20 @@ def import_smf(filepath):
 
     # Read texture images
     offset = texPos+1
-    for i in range(0, n):
+    for i in range(n):
         name = unpack_string_from(data, offset)
-        print(name)
         offset = offset + len(name) + 1
         dimensions = (
             unpack_from("H", data, offset=offset)[0],
             unpack_from("H", data, offset=offset+2)[0],
         )
         offset = offset+4
-        print(name)
-        print(dimensions)
+        print("Name: ", name)
+        print("Dimensions: ", dimensions)
+
+        num_pixels = dimensions[0] * dimensions[1]
+        print("Num pixels: ", num_pixels)
+
         if name in bpy.data.images:
             # Already an image with the given name
             img = bpy.data.images[name]
@@ -114,14 +117,15 @@ def import_smf(filepath):
             # Much faster way to set image data using NumPy
             # TODO Adjust use of foreach_set based on Blender version used
             # (foreach_set/foreach_get are fairly recent additions)
-            num_pixels = dimensions[0] * dimensions[1]
             image_data = np.frombuffer(data, dtype = np.ubyte, count = 4*num_pixels, offset = offset)
             image_data = (image_data / 255).astype(np.float)
             img.pixels.foreach_set(tuple(image_data))
-            
+
             end = time.perf_counter_ns()
 
             print(str((end-start)/1000) + "us")
+
+        offset += 4 * num_pixels
 
     # Read model data
     # Create a new Blender 'MESH' type object for every SMF model
@@ -196,7 +200,8 @@ def import_smf(filepath):
     node_num = unpack_from("B", data, offset = rigPos)[0]
     if node_num > 0:
         bpy.ops.object.armature_add(enter_editmode=True)
-        armature_object = bpy.data.objects[-1:]
+        print("Meeeh")
+        armature_object = bpy.data.objects[-1:][0]
         armature = armature_object.data
         bpy.ops.armature.select_all(action='SELECT')
         bpy.ops.armature.delete()   # Delete default bone
@@ -208,7 +213,7 @@ def import_smf(filepath):
         for node_index in range(node_num):
             data_tuple = unpack_from("ffffffffBB", data,
                         offset = rigPos+1 + node_index*item_bytesize)
-            dq = data_tuple[0:8]
+            dq = dq_create_iterable(data_tuple[0:8], w_last = True) # SMF stores w last
             parent_bone_index = data_tuple[8]
             is_bone = data_tuple[9]
             bpy.ops.armature.bone_primitive_add()
@@ -242,5 +247,7 @@ def import_smf(filepath):
             anim_name = unpack_string_from(data, offset=aniPos+1)
             print(anim_name)
             #anim = bpy.data.actions.new(anim_name)"""
+
+    bpy.ops.object.editmode_toggle()
 
     return {'FINISHED'}
