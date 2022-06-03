@@ -13,6 +13,24 @@ DQ = namedtuple(
     defaults=[Quaternion(), Quaternion((0, 0, 0, 0))]
 )
 
+def dq_create_iterable(iterable, w_last = False):
+    """Create a DQ from the given iterable
+
+        By default the order of components is as used by mathutils.Quaternion:
+
+        [wr, xr, yr, zr, wd, xd, yd, zd]
+
+        Set argument w_last to True if the iterable stores the DQ with w last
+    """
+    if w_last:
+        q_real = Quaternion([iterable[3], *iterable[ 0:3]])
+        q_dual = Quaternion([iterable[7], *iterable[-4:7]])
+    else:
+        q_real = Quaternion(iterable[0:4])
+        q_dual = Quaternion(iterable[4:8])
+
+    return DQ(q_real, q_dual)
+
 def dq_create_identity():
     """Return a new identity DQ"""
     return DQ(Quaternion(), Quaternion([0, 0, 0, 0]))
