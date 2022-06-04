@@ -8,18 +8,37 @@ bl_info = {
     "warning": "",  # used for warning icon and text in addons panel
     "doc_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",
     "tracker_url": "https://github.com/blender-to-gmstudio/blender-to-smf/issues",
+    "support": 'COMMUNITY',
     "category": "Import-Export"}
 
+# Make sure to reload changes to code that we maintain ourselves
+# when reloading scripts in Blender
+if "bpy" in locals():
+    import importlib
+    if "export_smf" in locals():
+        importlib.reload(export_smf)
+    if "import_smf" in locals():
+        importlib.reload(import_smf)
+
 import bpy
-from .export_smf import export_smf
-from .import_smf import import_smf
-
-# ExportHelper is a helper class, defines filename and
-# invoke() function which calls the file selector.
-from bpy_extras.io_utils import ExportHelper, ImportHelper
-
-from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator
+from bpy.props import (
+    StringProperty,
+    BoolProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+)
+from bpy_extras.io_utils import (
+    ExportHelper,
+    ImportHelper,
+)
+
+from . import export_smf
+from . import import_smf
+
+from .export_smf import export_smf_file
+from .import_smf import import_smf_file
 
 
 class ImportSMF(Operator, ImportHelper):
@@ -37,7 +56,7 @@ class ImportSMF(Operator, ImportHelper):
     )
 
     def execute(self, context):
-        return import_smf(self.filepath)
+        return import_smf_file(self.filepath)
 
 
 class ExportSMF(Operator, ExportHelper):
@@ -147,7 +166,7 @@ class ExportSMF(Operator, ExportHelper):
 
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
-        return export_smf(self, context, **keywords)
+        return export_smf_file(self, context, **keywords)
 
     def draw(self, context):
         # Everything gets displayed through the panels that are defined below

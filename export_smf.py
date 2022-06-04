@@ -1,6 +1,6 @@
 # SMF export scripts for Blender
 #
-import bpy
+
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
@@ -8,7 +8,18 @@ from os import path
 
 import numpy as np
 
+# Make sure to reload changes to code that we maintain ourselves
+# when reloading scripts in Blender
+if "bpy" in locals():
+    import importlib
+    if "pydq" in locals():
+        importlib.reload(pydq)
+
+import bpy
+
 # from .debug import format_iterable, print_dq_list
+
+from . import pydq
 
 from .pydq import (
     dq_create_matrix,
@@ -113,7 +124,7 @@ def smf_skin_indices_weights(vertices, index_map):
 
     return (indices, weights)
 
-def export_smf(operator, context,
+def export_smf_file(operator, context,
                filepath,
                export_textures,
                export_type,

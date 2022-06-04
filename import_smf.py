@@ -1,28 +1,39 @@
-# SMF export scripts for Blender
+# SMF import scripts for Blender
 #
-#from .pydq import dq_create_matrix_vector, dq_to_tuple_smf
-import bpy
-from struct import Struct, calcsize
-from mathutils import *
-from math import *
-from os import path
+#
+#
+#
 
 import time
+from math import *
+from mathutils import *
+from os import path
+from struct import (
+    Struct,
+    calcsize,
+    unpack,
+    unpack_from,
+)
 
 # Used for much faster image loading
 import numpy as np
 
+# Make sure to reload changes to code that we maintain ourselves
+# when reloading scripts in Blender
+if "bpy" in locals():
+    import importlib
+    if "pydq" in locals():
+        importlib.reload(pydq)
+
+import bpy
+
+from . import pydq
+from .pydq import dq_create_iterable
+
+# SMF definitions
 SMF_version = 7
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
-
-### IMPORT ###
-
-from struct import unpack, unpack_from
-
-from .pydq import (
-    dq_create_iterable,
-)
 
 def unpack_string_from(data, offset=0):
     """Unpacks a zero terminated string from the given offset in the data"""
@@ -32,11 +43,12 @@ def unpack_string_from(data, offset=0):
         offset += 1
     return result
 
-def import_smf(filepath):
+def import_smf_file(filepath):
     """Main entry point for SMF import"""
     import bmesh
     modName = path.basename(filepath)
     print("Model file: " + str(modName))
+    print("How'd this get here?!")
 
     data = bytearray()
     with open(filepath, 'rb') as file:
