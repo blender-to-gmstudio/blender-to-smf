@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Export SMF",
-    "description": "Export to SMF 10 (SnidrsModelFormat)",
+    "description": "Export to SMF 11 (SnidrsModelFormat)",
     "author": "Bart Teunis",
     "version": (0, 9, 0),
     "blender": (2, 80, 0),
