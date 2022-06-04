@@ -415,8 +415,9 @@ def export_smf_file(operator, context,
                 if floor(log2(cpo)) != log2(cpo):
                     operator.report({'WARNING'}, img.name + " - dimension is not a power of two: " + str(cpo))
 
-            # Faster way using NumPy
-            image_data = np.fromiter(img.pixels, dtype = np.float)
+            # Faster way using NumPy and Image.pixels.foreach_set (fast!)
+            image_data = np.empty(len(img.pixels), dtype = np.single)
+            img.pixels.foreach_get(image_data)
             image_data = (np.multiply(image_data, 255, out=image_data)).round(out=image_data).astype(np.ubyte)
             bytedata = image_data.tobytes()
 
