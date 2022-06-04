@@ -417,7 +417,7 @@ def export_smf_file(operator, context,
 
             # Faster way using NumPy
             image_data = np.fromiter(img.pixels, dtype = np.float)
-            image_data = (image_data * 255).round().astype(np.ubyte)
+            image_data = (np.multiply(image_data, 255, out=image_data)).round(out=image_data).astype(np.ubyte)
             bytedata = image_data.tobytes()
 
             texture_bytes.extend(pack('B' * len(img.pixels), *bytedata))
