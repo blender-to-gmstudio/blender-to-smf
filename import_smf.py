@@ -7,7 +7,7 @@
 import time
 from math import *
 from mathutils import *
-from os import path
+from pathlib import Path
 from struct import (
     Struct,
     calcsize,
@@ -46,9 +46,8 @@ def unpack_string_from(data, offset=0):
 def import_smf_file(filepath):
     """Main entry point for SMF import"""
     import bmesh
-    modName = path.basename(filepath)
+    modName = Path(filepath).stem
     print("Model file: " + str(modName))
-    print("How'd this get here?!")
 
     data = bytearray()
     with open(filepath, 'rb') as file:
@@ -65,7 +64,7 @@ def import_smf_file(filepath):
 
     # Valid SMF v7 file?
     versionNum = int(unpack_from("f", data, offset=18)[0])
-    print(versionNum)
+    print("SMF version:", versionNum)
 
     if versionNum != 7:
         print("Invalid SMF version. The importer currently only supports SMF v7.")
@@ -80,8 +79,6 @@ def import_smf_file(filepath):
     # Read number of models
     modelNum = unpack_from("B", data, offset = 62)[0]
 
-    print(texPos, matPos, modPos, nodPos, colPos, rigPos, aniPos, selPos, subPos)
-    print(placeholder)
     print("Number of models:", modelNum)
 
     img = None
@@ -148,10 +145,12 @@ def import_smf_file(filepath):
     # Read model data
     # Create a new Blender 'MESH' type object for every SMF model
     print("Read model data...")
+    print("Meshes:", modelNum)
     dataPos = modPos
     for model_index in range(modelNum):
         size = unpack_from("I", data, offset=dataPos)[0]
         pos = dataPos + 4
+        print(modName, model_index)
         print(size)
         no_faces = int(size/3 / SMF_format_size)
         print(no_faces)
@@ -188,7 +187,8 @@ def import_smf_file(filepath):
         pos = pos + len(matName) + 1
         texName = unpack_string_from(data, offset=pos)  # Image name
         pos = pos + len(texName) + 1
-        # print(matName, texName)
+        print("Material:", matName)
+        print("Image:", texName)
 
         visible = unpack_from("B", data, offset=pos)[0]
         pos += 1
@@ -240,7 +240,7 @@ def import_smf_file(filepath):
                 new_bone.parent = bone_list[parent_bone_index]
                 new_bone.use_connect = is_bone
             new_bone.tail = new_tail
-            print(new_bone.matrix, new_bone.tail[:])
+            # print(new_bone.matrix, new_bone.tail[:])
             # """
 
             # New attempt: do the exporter's conversion backwards
