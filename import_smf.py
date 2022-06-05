@@ -263,6 +263,6 @@ def import_smf_file(filepath):
             print(anim_name)
             #anim = bpy.data.actions.new(anim_name)"""
 
-    bpy.ops.object.editmode_toggle()
+    bpy.ops.object.mode_set(mode='OBJECT')
 
     return {'FINISHED'}
