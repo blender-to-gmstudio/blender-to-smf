@@ -136,6 +136,7 @@ def import_smf_file(operator, context,
     # Create a new Blender 'MESH' type object for every SMF model
     print("Read model data...")
     print("Meshes:", modelNum)
+    mesh_object_list = []
     dataPos = modPos
     for model_index in range(modelNum):
         size = unpack_from("I", data, offset=dataPos)[0]
@@ -191,6 +192,8 @@ def import_smf_file(operator, context,
         new_obj.name = mesh.name    # Let Blender handle the number suffix
         new_obj.data = mesh
 
+        mesh_object_list.append(new_obj)
+
         # Add a material slot and assign the material to it
         # The assigned material depends on whether new materials are created
         bpy.ops.object.material_slot_add()
@@ -202,12 +205,15 @@ def import_smf_file(operator, context,
 
     # Read rig info and construct armature
     node_num = unpack_from("B", data, offset = rigPos)[0]
+    armature_object = None
     if node_num > 0:
 
         # Create armature
         bpy.ops.object.armature_add(enter_editmode=True)
-        armature_object = bpy.data.objects[-1:][0]
+        armature_object = bpy.context.object
+        armature_object.name = modName + "_Armature"
         armature = armature_object.data
+        armature.name = modName
         bpy.ops.armature.select_all(action='SELECT')
         bpy.ops.armature.delete()   # Delete default bone
 
@@ -244,6 +250,16 @@ def import_smf_file(operator, context,
             if not bone.use_connect:
                 bone.select = True
         bpy.ops.armature.delete()   # What about the root node/bone?
+
+        bpy.context.active_object.select_set(False)
+
+    # Parent the mesh(es) to the armature
+    for mesh_obj in mesh_object_list:
+        mesh_obj.select_set(True)
+
+    armature_object.select_set(True)
+
+    bpy.ops.object.parent_set(type='ARMATURE_NAME')
 
     # Read animations and add actions to the armature
     # todo
