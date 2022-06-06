@@ -130,7 +130,7 @@ def import_smf_file(operator, context,
 
         offset += 4 * num_pixels
 
-        material_map[img.name] = mat
+        material_map[name] = mat
 
     # Read model data
     # Create a new Blender 'MESH' type object for every SMF model
@@ -192,19 +192,10 @@ def import_smf_file(operator, context,
         new_obj.data = mesh
 
         # Add a material slot and assign the material to it
+        # The assigned material depends on whether new materials are created
         bpy.ops.object.material_slot_add()
 
-        mat_final = None
-        if create_new_materials_images:
-            if texName in bpy.data.materials:
-                mat_final = bpy.data.materials[texName]
-            else:
-                # Empty material slot... => unwanted
-                pass
-        else:
-            mat_final = bpy.data.materials[texName]
-
-        new_obj.material_slots[0].material = mat_final
+        new_obj.material_slots[0].material = material_map[texName]
 
         # Advance to next model
         dataPos = pos
