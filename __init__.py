@@ -55,8 +55,16 @@ class ImportSMF(Operator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
+    create_new_materials_images: BoolProperty(
+        name="Create New Materials/Images",
+        description= ("Force the creation of new materials and images, "
+                      "even if materials/images with the same name already exist"),
+        default=True,
+    )
+
     def execute(self, context):
-        return import_smf_file(self.filepath)
+        keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
+        return import_smf_file(self, context, **keywords)
 
 
 class ExportSMF(Operator, ExportHelper):

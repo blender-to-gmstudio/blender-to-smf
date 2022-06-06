@@ -43,8 +43,14 @@ def unpack_string_from(data, offset=0):
         offset += 1
     return result
 
-def import_smf_file(filepath):
-    """Main entry point for SMF import"""
+def import_smf_file(operator, context,
+               filepath,
+               create_new_materials_images,
+               ):
+    """
+    Main entry point for SMF import
+    """
+
     import bmesh
     modName = Path(filepath).stem
     print("Model file: " + str(modName))
@@ -90,6 +96,7 @@ def import_smf_file(filepath):
     #
     # In current SMF, textures and materials are the same
     # So for every texture we need to add a material as well
+    material_map = {}
     offset = texPos+1
     for i in range(n):
         name = unpack_string_from(data, offset)
@@ -105,42 +112,25 @@ def import_smf_file(filepath):
         num_pixels = dimensions[0] * dimensions[1]
         print("Num pixels: ", num_pixels)
 
-        if name in bpy.data.materials:
-            # Already a material with the same name
-            mat = bpy.data.materials[name]
+        if create_new_materials_images:
+            # Create new material and image no matter what the .blend file contains
+            img = image_from_data(name, dimensions, data, offset)
+            mat = material_with_texture(name, img)
         else:
-            # No image and material with this name exist, add them
-            mat = bpy.data.materials.new(name)
-            img = bpy.data.images.new(
-                name=name,
-                width=dimensions[0],
-                height=dimensions[1],
-            )
-
-            # Read the image data
-            print("Read Image Data")
-
-            start = time.perf_counter_ns()
-
-            # Process image data using NumPy, then use pixels.foreach_set
-            image_data = np.frombuffer(data, dtype = np.ubyte, count = 4*num_pixels, offset = offset)
-            image_data = (image_data / 255).astype(np.float)
-            img.pixels.foreach_set(tuple(image_data))
-
-            end = time.perf_counter_ns()
-
-            print(str((end-start)/1000) + "us")
-
-            # Configure the new material's shader nodes
-            # and assign the texture image as an input
-            mat.use_nodes = True
-            mat.node_tree.nodes.new(type="ShaderNodeTexImage")  # This is the bl_rna identifier, NOT the type!
-            image_node = mat.node_tree.nodes['Image Texture']   # Default name
-            image_node.image = img
-            shader_node = mat.node_tree.nodes["Principled BSDF"]
-            mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
+            if name in bpy.data.materials:
+                # A material with the image name already exists => use it!
+                #
+                # Note how this may link to a material that has a wrong texture
+                # assigned to it or even no texture at all (!)
+                mat = bpy.data.materials[name]
+            else:
+                # Create new material and image (since it doesn't exist yet)
+                img = image_from_data(name, dimensions, data, offset)
+                mat = material_with_texture(name, img)
 
         offset += 4 * num_pixels
+
+        material_map[img.name] = mat
 
     # Read model data
     # Create a new Blender 'MESH' type object for every SMF model
@@ -177,7 +167,7 @@ def import_smf_file(filepath):
             for i in range(len(face.loops)):
                 face.loops[i][uv_layer].uv = uvs[i]
 
-        # TODO Use filename without ext here
+        # Add mesh
         mesh = bpy.data.meshes.new(modName)
         bm.to_mesh(mesh)
 
@@ -203,7 +193,18 @@ def import_smf_file(filepath):
 
         # Add a material slot and assign the material to it
         bpy.ops.object.material_slot_add()
-        new_obj.material_slots[0].material = mat
+
+        mat_final = None
+        if create_new_materials_images:
+            if texName in bpy.data.materials:
+                mat_final = bpy.data.materials[texName]
+            else:
+                # Empty material slot... => unwanted
+                pass
+        else:
+            mat_final = bpy.data.materials[texName]
+
+        new_obj.material_slots[0].material = mat_final
 
         # Advance to next model
         dataPos = pos
@@ -266,3 +267,44 @@ def import_smf_file(filepath):
     bpy.ops.object.mode_set(mode='OBJECT')
 
     return {'FINISHED'}
+
+
+def image_from_data(name, dimensions, data, offset):
+    """Create a new image (bpy.types.Image) from the data"""
+
+    img = bpy.data.images.new(
+        name=name,
+        width=dimensions[0],
+        height=dimensions[1],
+    )
+
+    # Read the image data
+    print("Read Image Data")
+
+    start = time.perf_counter_ns()
+
+    # Process image data using NumPy, then use Image.pixels.foreach_set
+    num_pixels = dimensions[0] * dimensions[1]
+    image_data = np.frombuffer(data, dtype = np.ubyte, count = 4*num_pixels, offset = offset)
+    image_data = (image_data / 255).astype(np.float)
+    img.pixels.foreach_set(tuple(image_data))
+
+    end = time.perf_counter_ns()
+
+    print(str((end-start)/1000) + "us")
+
+    return img
+
+def material_with_texture(name, image):
+    """Create a new material using nodes with the image as the base color input"""
+
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+
+    mat.node_tree.nodes.new(type="ShaderNodeTexImage")  # This is the bl_rna identifier, NOT the type!
+    image_node = mat.node_tree.nodes['Image Texture']   # Default name
+    image_node.image = image
+    shader_node = mat.node_tree.nodes["Principled BSDF"]
+    mat.node_tree.links.new(image_node.outputs['Color'], shader_node.inputs['Base Color'])
+
+    return mat
