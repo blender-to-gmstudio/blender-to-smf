@@ -114,7 +114,8 @@ class ExportSMF(Operator, ExportHelper):
 
     multiplier: IntProperty(
         name="Sample Frame Multiplier",
-        description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
+        description=("Sample Frame Multiplier - Determines number of precomputed samples "
+                     "using (number of keyframes) * (sample frame multiplier)"),
         default=4,
         soft_min=4,
         soft_max=20,
@@ -135,7 +136,8 @@ class ExportSMF(Operator, ExportHelper):
 
     subdivisions: IntProperty(
         name="Subdivisions",
-        description="Number of times to subdivide an animation when exporting samples. This subdivision is made for each animation individually.",
+        description=("Number of times to subdivide an animation when exporting samples. "
+                     "This subdivision is made for each animation individually."),
         default=10,
         soft_min=2,
     )
