@@ -257,9 +257,9 @@ def import_smf_file(operator, context,
     for mesh_obj in mesh_object_list:
         mesh_obj.select_set(True)
 
-    armature_object.select_set(True)
-
-    bpy.ops.object.parent_set(type='ARMATURE_NAME')
+    if armature_object:
+        armature_object.select_set(True)
+        bpy.ops.object.parent_set(type='ARMATURE_NAME')
 
     # Read animations and add actions to the armature
     # todo
