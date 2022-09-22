@@ -1,3 +1,5 @@
+---
+
 - name: Markdown to PDF and HTML
   # You may pin to the exact commit or the version.
   # uses: BaileyJM02/markdown-to-pdf@1be26775add5f94fb55d4a2ce36ff7cad23b8dd0
