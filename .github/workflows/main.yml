@@ -1,0 +1,29 @@
+- name: Markdown to PDF and HTML
+  # You may pin to the exact commit or the version.
+  # uses: BaileyJM02/markdown-to-pdf@1be26775add5f94fb55d4a2ce36ff7cad23b8dd0
+  uses: BaileyJM02/markdown-to-pdf@v1
+  with:
+    # (Path) or (File) The location of the folder containing your .md or .markdown files, or a path to a single .md or .markdown file that you would like to convert.
+    input_path: # optional
+    # (Path) The location of the folder containing your .md or .markdown files
+    input_dir: # optional
+    # (Path) The location of the folder containing your images, this should be the route of all images
+    images_dir: # optional
+    # (String) The path you use to import your images that can be replaced with the server URL
+    image_import: # optional
+    # (Path) The location of the folder you want to place the built files
+    output_dir: # optional
+    # (Boolean) Whether to also create a .html file
+    build_html: # optional
+    # (Boolean) Whether to create a .pdf file (the intended behaviour)
+    build_pdf: # optional
+    # (File) The location of the CSS file you want to use as the theme
+    theme: # optional
+    # (Boolean) Whether to extend your custom CSS file with the default theme
+    extend_default_theme: # optional
+    # (File) The location of the CSS file you want to use as the code snipped highlight theme
+    highlight_theme: # optional
+    # (File) The location of the HTML/Mustache file you want to use as the HTML template
+    template: # optional
+    # (Boolean) Whether a table of contents should be generated
+    table_of_contents: # optional
