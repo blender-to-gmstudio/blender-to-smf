@@ -4,7 +4,6 @@
 from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
-from os import path
 
 import numpy as np
 

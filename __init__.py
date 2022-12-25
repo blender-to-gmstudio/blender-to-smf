@@ -55,8 +55,16 @@ class ImportSMF(Operator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
+    create_new_materials_images: BoolProperty(
+        name="Create New Materials/Images",
+        description= ("Force the creation of new materials and images, "
+                      "even if materials/images with the same name already exist"),
+        default=True,
+    )
+
     def execute(self, context):
-        return import_smf_file(self.filepath)
+        keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
+        return import_smf_file(self, context, **keywords)
 
 
 class ExportSMF(Operator, ExportHelper):
@@ -114,7 +122,8 @@ class ExportSMF(Operator, ExportHelper):
 
     multiplier: IntProperty(
         name="Sample Frame Multiplier",
-        description="Sample Frame Multiplier - Determines number of precomputed samples using (number of keyframes) * (sample frame multiplier)",
+        description=("Sample Frame Multiplier - Determines number of precomputed samples "
+                     "using (number of keyframes) * (sample frame multiplier)"),
         default=4,
         soft_min=4,
         soft_max=20,
@@ -135,7 +144,8 @@ class ExportSMF(Operator, ExportHelper):
 
     subdivisions: IntProperty(
         name="Subdivisions",
-        description="Number of times to subdivide an animation when exporting samples. This subdivision is made for each animation individually.",
+        description=("Number of times to subdivide an animation when exporting samples. "
+                     "This subdivision is made for each animation individually."),
         default=10,
         soft_min=2,
     )
