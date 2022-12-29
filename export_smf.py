@@ -37,39 +37,21 @@ SMF_format_size = SMF_format_struct.size
 # Mesh-like objects (the ones that can be converted to mesh)
 meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
-def prep_mesh(obj, obj_rig, mesh):
-    """Prepare the given mesh for export to SMF using the BMesh library"""
-    import bmesh
+def prep_mesh(obj, mesh):
+    """Prepare the given mesh for export to SMF"""
 
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
+    # Transform to world coordinates
+    mat = Matrix.Scale(-1, 4, Vector([0, 1, 0]))
+    mesh.transform(obj.matrix_world)
 
-    # Apply our own world transform
-    bmesh.ops.transform(bm,
-        matrix=obj.matrix_world,
-        space=Matrix(),
-        verts = bm.verts[:]
-    )
+    # Invert Y
+    mesh.transform(mat)
+    mesh.flip_normals()
 
-    # See https://blender.stackexchange.com/a/122321
-    geom_orig = bm.faces[:] + bm.verts[:] + bm.edges[:]
-    bmesh.ops.mirror(bm,
-        geom=geom_orig,
-        axis='Y',
-        merge_dist=-1
-    )
-    bmesh.ops.delete(bm,geom=geom_orig,context='VERTS')
-    #bmesh.ops.recalc_face_normals(bm,faces= bm.faces[:])
-    bmesh.ops.reverse_faces(bm, faces=bm.faces[:])  # Avoid normals messing up
-
-    # Triangulate the mesh
-    bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method='BEAUTY', ngon_method='BEAUTY')
-
-    bm.to_mesh(mesh)
-    bm.free()
-
-    # Calculate split normals
+    # Calculate all needed data
+    mesh.calc_loop_triangles()
     mesh.calc_normals_split()
+    #mesh.calc_tangents()   # BUG TODO causes ubyte out of bounds error (-val)
 
 def smf_node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
@@ -303,9 +285,7 @@ def export_smf_file(operator, context,
         # The world transform is not applied to the mesh
         obj_eval = obj.evaluated_get(dg)
         mesh = bpy.data.meshes.new_from_object(obj_eval, preserve_all_data_layers=True, depsgraph=dg)
-        # mesh.calc_normals()
-        # mesh.calc_normals_split()
-        prep_mesh(obj, rig_object, mesh)
+        prep_mesh(obj, mesh)
 
         # Reset pose_position setting
         if arma:
@@ -339,32 +319,19 @@ def export_smf_file(operator, context,
         # In the end we are left with a bytearray per material slot.
         # A bytearray that's empty at the end indicates no faces use the slot
         # and thus can be skipped.
-        for face in mesh.polygons:
-            for loop in [mesh.loops[i] for i in face.loop_indices]:
+        for face in mesh.loop_triangles:
+            for loop in [mesh.loops[i] for i in face.loops]:
                 vertex_data = []
 
                 vert = mesh.vertices[loop.vertex_index]
-                """
-                if normal_source == "VERT":
-                    normal = vert.normal
-                if normal_source == "LOOP":
-                    normal = loop.normal
-                if normal_source == "FACE":
-                    normal = face.normal"""
 
                 uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 if invert_uv_v:
                     uv[1] = 1 - uv[1]
                 tan_int = [*(int(c*255) for c in loop.tangent), 0]
 
-                # Determine the correct normal to export
-                if mesh.use_auto_smooth:
-                    normal = vert.normal
-                else:
-                    normal = face.normal
-
                 vertex_data.extend(vert.co)
-                vertex_data.extend(normal)
+                vertex_data.extend(loop.normal)
                 vertex_data.extend(uv)
                 vertex_data.extend(tan_int)
                 vertex_data.extend(skin_indices[vert.index])
