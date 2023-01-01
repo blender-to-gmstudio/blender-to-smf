@@ -210,28 +210,8 @@ def export_smf_file(operator, context,
 
             # Add the world transform to the nodes, ignore scale
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
-
-            # m = mat_w.to_3x3()  # Verify orthogonality of upper 3x3
-            # print(m)
-            # print(m.is_orthogonal)
-            # print(m.is_orthogonal_axis_vectors)
-
-            # print(n)
-            #
+            
             dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
-            # print(format_iterable(dq_to_tuple_xyzw(dq)))
-
-            # if b.parent:
-            #    # Update node (see SMF's smf_rig.update_node)
-            #    dq_conj = dq_get_conjugate(dq)
-            #    print(dq_to_tuple_xyzw(dq_conj))
-            #    dq_local = dq_get_product(dqs[parent_bone_index], dq)
-            #    print(dq_to_tuple_xyzw(dq_local))
-            #    dq_local_conj = dq_get_conjugate(dq_local)
-            #    print(dq_to_tuple_xyzw(dq_local_conj))
-
-            # Construct a list containing matrix values in the right order
-            # vals = [j for i in mat_w.col for j in i]
             vals = dq_to_tuple_xyzw(dq)
 
             rig_bytes.extend(pack('f'*len(vals), *vals))
