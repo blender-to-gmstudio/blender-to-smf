@@ -20,6 +20,10 @@ root_node = [
     (0, 0, 0),
 ]
 
+class SMF_node:
+    """Potential idea for an SMF 'node' class"""
+    pass
+
 # The final list of SMF nodes. Extend this one with others to add
 # more transform chains/hierarchies
 # All to_node_list functions below add transform hierarchies to this
@@ -30,6 +34,35 @@ smf_nodes = [
 ## RIG
 def armature_to_node_list(armature_object):
     """Convert an armature's skeleton to a list of SMF nodes"""
+
+    armature = armature_object.data
+    bones = [bone for bone in armature.bones]
+    bones_orig = bones.copy()
+    for bone in bones_orig:
+        if bone.parent and not bone.use_connect:
+            pos = bones.index(bone)
+            bones.insert(pos, None)
+
+    for n, bone in enumerate(bones):
+        b = bone if bone else bones[n+1]
+
+        parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+        connected = b.use_connect
+
+        if bone and b.parent and not b.use_connect:
+            # This is a node for which an added node has been written
+            parent_bone_index = n-1
+            connected = True
+            bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
+
+        # Construct node matrix
+        position_attr = 'tail_local' if bone else 'head_local'
+        matrix = b.matrix_local.copy()
+        matrix.translation = getattr(b, position_attr)[:]
+
+    # Add node next (TODO!)
+    
+
     pass
 
 def object_to_node_list(any_object):

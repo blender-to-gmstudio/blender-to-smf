@@ -214,11 +214,12 @@ def export_smf_file(operator, context,
             dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
             vals = dq_to_tuple_xyzw(dq)
 
+            # Write node data
             rig_bytes.extend(pack('f'*len(vals), *vals))
-            rig_bytes.extend(pack('I',parent_bone_index))       # node[@ eAnimNode.Parent]
-            rig_bytes.extend(pack('B',connected))               # node[@ eAnimNode.IsBone]
-            rig_bytes.extend(pack('B',False))                   # node[@ eAnimNode.Locked]
-            rig_bytes.extend(pack('fff',*(0, 0, 0)))            # Primary IK axis (default all zeroes)
+            rig_bytes.extend(pack('I', parent_bone_index))      # node[@ eAnimNode.Parent]
+            rig_bytes.extend(pack('B', connected))              # node[@ eAnimNode.IsBone]
+            rig_bytes.extend(pack('B', False))                  # node[@ eAnimNode.Locked]
+            rig_bytes.extend(pack('fff', *(0, 0, 0)))           # Primary IK axis (default all zeroes)
 
             t = mat_w.translation
             name = b.name if position_attr == 'tail_local' else "Inserted for " + b.name
