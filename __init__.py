@@ -129,19 +129,6 @@ class ExportSMF(Operator, ExportHelper):
         soft_max=20,
     )
 
-    """
-    normal_source: EnumProperty(
-        name="Normal",
-        description="The type of normal to export (vertex, loop, face)",
-        items=[
-            ("VERT", "Vertex", "Vertex normal", 0),
-            ("LOOP", "Loop", "Loop normal", 1),
-            ("FACE", "Face", "Face normal", 2),
-        ],
-        default="VERT",
-    )
-    """
-
     subdivisions: IntProperty(
         name="Subdivisions",
         description=("Number of times to subdivide an animation when exporting samples. "

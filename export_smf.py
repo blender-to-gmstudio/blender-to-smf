@@ -22,6 +22,7 @@ from . import pydq
 
 from .pydq import (
     dq_create_matrix,
+    dq_create_translation,
     dq_get_product,
     dq_get_conjugate,
     dq_negate,
@@ -114,7 +115,6 @@ def export_smf_file(operator, context,
                multiplier,
                subdivisions,
                interpolation,
-               #normal_source,
                invert_uv_v,
                **kwargs,
                ):
@@ -210,7 +210,7 @@ def export_smf_file(operator, context,
 
             # Add the world transform to the nodes, ignore scale
             mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
-            
+
             dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
             vals = dq_to_tuple_xyzw(dq)
 
@@ -224,6 +224,16 @@ def export_smf_file(operator, context,
             name = b.name if position_attr == 'tail_local' else "Inserted for " + b.name
             debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
             debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
+
+
+        # TESTING - Insert a node for testing
+        """
+        dq_t = dq_negate(dq_create_translation(0, 0, 3))
+        vals = dq_to_tuple_xyzw(dq_t)
+        rig_bytes.extend(pack('f'*len(vals), *vals))
+        rig_bytes.extend(pack('I', 0))
+        rig_bytes.extend(pack('B', False))
+        rig_bytes.extend(pack('fff', *(0, 0, 0)))"""
 
         # Print some extended, readable debug info
         print("SMF Node List")
@@ -402,11 +412,8 @@ def export_smf_file(operator, context,
             # for i, rbone in enumerate(bones):
             for rbone in bones:
                 if rbone:
-                    # Get the bone (The name is identical (!))
-                    bone = rig_object.pose.bones[rbone.name]
-
-                    # Use bone matrix
-                    mat = bone.matrix.copy()
+                    # Use bone matrix (The name is identical (!))
+                    mat = rig_object.pose.bones[rbone.name].matrix.copy()
                 else:
                     # Use an identity matrix (i.e. no change)
                     mat = Matrix()
@@ -419,11 +426,6 @@ def export_smf_file(operator, context,
 
                 # TODO fix_keyframe_dq should go here...
 
-                # m = mat_final.to_3x3()  # Verify orthogonality of upper 3x3
-                # print(m)
-                # print(m.is_orthogonal)
-                # print(m.is_orthogonal_axis_vectors)
-                # vals = [j for i in mat_final.col for j in i]
                 vals = dq_to_tuple_xyzw(dq)
                 byte_data.extend(pack('f'*len(vals), *vals))
 
@@ -574,6 +576,15 @@ def apply_world_matrix(matrix, matrix_world):
 def transform_matrix_to_smf(matrix):
     """"""
     # TODO Split up the two transforms properly (see apply_world_matrix)
+    pass
+
+def check_rig_exportable_to_smf(rig_object):
+    """Check if the given rig can be exported to SMF"""
+    pass
+
+def check_animation_exportable_to_smf(action):
+    """Check if the given action can be exported to SMF"""
+    # SMF uses dual quaternions so cannot store changes in bone scale!
     pass
 
 def texture_image_from_node_tree(material):
