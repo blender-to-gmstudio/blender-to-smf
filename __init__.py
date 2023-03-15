@@ -2,7 +2,7 @@ bl_info = {
     "name": "Export SMF",
     "description": "Export to SMF 11 (SnidrsModelFormat)",
     "author": "Bart Teunis",
-    "version": (0, 9, 0),
+    "version": (0, 9, 1),
     "blender": (2, 80, 0),
     "location": "File > Export",
     "warning": "",  # used for warning icon and text in addons panel
