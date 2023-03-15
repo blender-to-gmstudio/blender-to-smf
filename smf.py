@@ -20,6 +20,11 @@ root_node = [
     (0, 0, 0),
 ]
 
+class SMF_rig:
+
+    pass
+
+# TODO
 class SMF_node:
     """Potential idea for an SMF 'node' class"""
     pass
@@ -31,15 +36,32 @@ smf_nodes = [
     root_node,
 ]
 
+def add_node(transform_matrix, parent, is_bone):
+    """Add a new node to the SMF rig"""
+    global smf_nodes
+
+
+
+    smf_nodes.append([
+        dq_to_tuple_xyzw(dq_create_matrix(transform_matrix)),
+
+    ])
+
+
+
 ## RIG
 def armature_to_node_list(armature_object):
     """Convert an armature's skeleton to a list of SMF nodes"""
+    global smf_nodes
 
     armature = armature_object.data
     bones = [bone for bone in armature.bones]
     bones_orig = bones.copy()
     for bone in bones_orig:
+        # Add a node for each bone (representing the tail)
+
         if bone.parent and not bone.use_connect:
+            # Add an additional node for disconnected bones
             pos = bones.index(bone)
             bones.insert(pos, None)
 
@@ -61,7 +83,7 @@ def armature_to_node_list(armature_object):
         matrix.translation = getattr(b, position_attr)[:]
 
     # Add node next (TODO!)
-    
+
 
     pass
 
