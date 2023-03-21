@@ -131,7 +131,7 @@ def export_smf_file(operator, context,
     rig_object = None
     rig = None
     anim = None
-    animations = set()
+    animations = dict()     # Use a dictionary to preserve order of insertion!
     if armature_list:
         rig_object = armature_list[0]
         rig = rig_object.data
@@ -143,11 +143,11 @@ def export_smf_file(operator, context,
                 if tracks:
                     for track in tracks:
                         for strip in track.strips:
-                            animations.add(strip.action)
+                            animations[strip.action] = strip.action
             elif anim_export_mode == 'CUR':
                 # Currently assigned action
                 if anim_data.action:
-                    animations.add(anim_data.action)
+                    animations[anim_data.action] = anim_data.action
             elif anim_export_mode == 'TRA':
                 # Every track separately
                 pass
@@ -159,7 +159,8 @@ def export_smf_file(operator, context,
 
     # Make sure we don't try to export actions that look like they're linked
     # but don't exist anymore
-    animations.discard(None)
+    if None in animations:
+        del animations[None]
 
     # Initalize variables that we need across chunks
     bindmap = {}
