@@ -167,7 +167,15 @@ class ExportSMF(Operator, ExportHelper):
         ],
         default="LIN",
     )
-
+    
+    bone_influences: IntProperty(
+        name="Bone Influences",
+        description=("The number of bone influences to use"),
+        default=4,
+        min=1,
+        max=4,
+    )
+    
     invert_uv_v: BoolProperty(
         name="Invert UV",
         description="Invert the v coordinate of uvs, i.e. export (u, 1 - v)",
@@ -234,10 +242,13 @@ class SMF_PT_export_advanced(bpy.types.Panel):
         layout.prop(operator, 'anim_export_mode')
         #layout.prop(operator, 'anim_length_mode')
 
-        layout.label(text="Specifics")
+        layout.label(text="Sampling")
         layout.prop(operator, 'export_type')
         if operator.export_type == 'SPL':
             layout.prop(operator, 'subdivisions')
+        
+        layout.label(text="Skinning")
+        layout.prop(operator, 'bone_influences')
 
         layout.label(text="Other")
         #layout.prop(operator, "normal_source")

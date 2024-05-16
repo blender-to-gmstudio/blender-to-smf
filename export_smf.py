@@ -80,7 +80,7 @@ def smf_bindmap(bones):
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
 
-def smf_skin_indices_weights(vertices, index_map):
+def smf_skin_indices_weights(vertices, index_map, num_influences=4):
     """Get skinning info from all vertices"""
     # This requires the list of vertices and the direct mapping
     # of Blender vertex group index to SMF bone index
@@ -94,10 +94,11 @@ def smf_skin_indices_weights(vertices, index_map):
         # Filter all vertex group assignments with a weight of 0
         # See bpy.ops.object.vertex_group_clean
         groups = filter(lambda group: (group.weight > 0.0), mod_groups)
-        # Keep the highest four weights (SMF supports 4)
+        # Keep the highest "num_influences" weights (SMF supports a maximum of 4)
         # See bpy.ops.object.vertex_group_limit_total
-        groups = sorted(groups, key=lambda group: group.weight)[-4:]
+        groups = sorted(groups, key=lambda group: group.weight)[-num_influences:]
         s = sum([g.weight for g in groups])
+        # Write the highest weights (the others remain at 0, so don't contribute)
         for index, group in enumerate(groups):
             w = group.weight/s*255
             indices[v.index][index] = index_map[group.group]
@@ -116,6 +117,7 @@ def export_smf_file(operator, context,
                interpolation,
                #normal_source,
                invert_uv_v,
+               bone_influences,
                **kwargs,
                ):
     """
@@ -281,7 +283,8 @@ def export_smf_file(operator, context,
         # Precalculate skinning info for this mesh's vertices
         skin_indices, skin_weights = smf_skin_indices_weights(
             mesh.vertices,
-            vgid_to_smf_map
+            vgid_to_smf_map,
+            bone_influences
         )
 
         # Write vertex buffer contents
