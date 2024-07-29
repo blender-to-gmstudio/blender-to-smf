@@ -16,6 +16,7 @@ if "bpy" in locals():
 
 import bpy
 
+
 # from .debug import format_iterable, print_dq_list
 
 from . import pydq
@@ -31,6 +32,10 @@ from .pydq import (
 SMF_version = 11    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
+
+# Check Blender version
+version = bpy.app.version
+b41_up = version[0] == 4 and version[1] >= 1  # Blender 4.1 and up
 
 ### EXPORT ###
 
@@ -50,8 +55,9 @@ def prep_mesh(obj, mesh):
 
     # Calculate all needed data
     mesh.calc_loop_triangles()
-    mesh.calc_normals_split()
-    #mesh.calc_tangents()   # BUG TODO causes ubyte out of bounds error (-val)
+    mesh.calc_tangents()
+    if not b41_up:
+        mesh.calc_normals_split()
 
 def smf_node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
@@ -115,7 +121,6 @@ def export_smf_file(operator, context,
                multiplier,
                subdivisions,
                interpolation,
-               #normal_source,
                invert_uv_v,
                bone_influences,
                **kwargs,
@@ -312,7 +317,7 @@ def export_smf_file(operator, context,
                 uv = uv_data[loop.index].uv if uv_data else [0, 0]
                 if invert_uv_v:
                     uv[1] = 1 - uv[1]
-                tan_int = [*(int(c*255) for c in loop.tangent), 0]
+                tan_int = [*(int((c+1)*127) for c in loop.tangent), 0]
 
                 vertex_data.extend(vert.co)
                 vertex_data.extend(loop.normal)
