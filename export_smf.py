@@ -52,6 +52,10 @@ def prep_mesh(obj, mesh):
     # Invert Y
     mesh.transform(mat)
     mesh.flip_normals()
+    
+    # Make sure the mesh has a UV map
+    if not mesh.uv_layers:
+        mesh.uv_layers.new()
 
     # Calculate all needed data
     mesh.calc_loop_triangles()
