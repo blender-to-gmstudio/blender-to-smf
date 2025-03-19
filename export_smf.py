@@ -29,7 +29,7 @@ from .pydq import (
     dq_to_tuple_xyzw,
 )
 
-SMF_version = 11    # SMF 'export' version
+SMF_version = 12    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
@@ -521,7 +521,8 @@ def export_smf_file(operator, context,
             track.mute = mute_prev[i]
 
     # Now build header
-    header_bytes = bytearray("SMF_v11_by_Snidr_and_Bart\0", 'utf-8')
+    version_string = "SMF_v{}_by_Snidr_and_Bart\0".format(SMF_version)
+    header_bytes = bytearray(version_string, 'utf-8')
 
     tex_pos = len(header_bytes) + calcsize('IIIII')
     mod_pos = tex_pos + len(texture_bytes)
