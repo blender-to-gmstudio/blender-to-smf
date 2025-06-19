@@ -298,10 +298,6 @@ def export_smf_file(operator, context,
     if None in animations:
         del animations[None]
 
-    # Initalize variables that we need across chunks
-    bindmap = {}
-    bone_names = []
-
     # Write rig
     bones = []
     
