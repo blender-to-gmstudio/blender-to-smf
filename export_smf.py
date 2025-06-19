@@ -63,10 +63,9 @@ def prep_mesh(obj, mesh):
     if not b41_up:
         mesh.calc_normals_split()
 
-def smf_node_list(armature_object):
+def smf_node_list(armature):
     """Construct the SMF node list from the given Armature object"""
     # TODO Insert root node (optional?)
-    armature = armature_object.data
     bones = [bone for bone in armature.bones]
     bones_orig = bones.copy()
     for bone in bones_orig:
@@ -82,7 +81,7 @@ def smf_bindmap(bones):
     # Only consider Blender bones that map to SMF bones
     # Every SMF node that has a parent and is attached to it, represents a bone
     # (the detached nodes represent the heads of bones)
-    smf_bones = [b for b in bones if b and b.parent]
+    smf_bones = [bone for bone in bones if bone and bone.parent]
     bindmap = {}
     sample_bone_ind = 0
     for node in smf_bones:
@@ -116,6 +115,132 @@ def smf_skin_indices_weights(vertices, index_map, num_influences=4):
 
     return (indices, weights)
 
+def get_export_data(object_list):
+    """Get the export data"""
+    
+    # Traverse objects, group costumes by unique rig
+    # Every unique armature data block indicates an SMF rig and, therefore, a new model and file
+    rigs = {}
+    
+    for obj in object_list:
+        if obj.type != 'MESH':
+            # Only consider meshes
+            continue
+        
+        # Find an armature modifier on this 'MESH' type object
+        mods = [mod for mod in obj.modifiers if mod.type == 'ARMATURE']
+        arma_object = mods[0].object if mods else None
+        arma_data = arma_object.data if arma_object else None
+        
+        rig_name = arma_data.name
+        if rig_name not in rigs:
+            # Initialize data for a new rig/SMF file
+            rigs[rig_name] = {}
+            rigs[rig_name]['models'] = []
+            rigs[rig_name]["costumes"] = {}
+            rigs[rig_name]['animations'] = set()
+        
+        models = rigs[rig_name]['models']
+        costumes = rigs[rig_name]["costumes"]
+        animations = rigs[rig_name]['animations']
+        
+        # Add animation(s) found on the armature object, if any
+        # (currently simplified as just the current action)
+        if arma_object:
+            if arma_object.animation_data:
+                if arma_object.animation_data.action:
+                    animations.add(arma_object.animation_data.action.name)
+        
+        # Find index or create new one
+        ind = -1
+        mesh = obj.data
+        try:
+            ind = models.index(mesh.name)
+        except:
+            models.append(mesh.name)
+            ind = len(models) - 1
+        
+        costume_name = arma_object.name
+        if costume_name not in costumes:
+            costumes[costume_name] = []
+        
+        costumes[costume_name].append(ind)
+    
+    return rigs
+
+def get_rig_bytedata(rig, mat_world, out_bones=None):
+    """Get the final bytedata to be written for the given rig"""
+    
+    # Construct node list for SMF
+    # (heads of disconnected bones need to become nodes, too)
+    bones = smf_node_list(rig)
+    
+    rig_bytes = bytearray()
+    
+    rig_bytes.extend(pack('I', len(bones)))                 # nodeNum
+    
+    for n, bone in enumerate(bones):
+        b = bone if bone else bones[n+1]
+
+        parent_bone_index = 0 if not b.parent else bones.index(b.parent)
+        connected = b.use_connect
+
+        if bone and b.parent and not b.use_connect:
+            # This is a node for which an added node has been written
+            parent_bone_index = n-1
+            connected = True
+            bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
+
+        # Construct node matrix
+        position_attr = 'tail_local' if bone else 'head_local'
+        matrix = b.matrix_local.copy()
+        matrix.translation = getattr(b, position_attr)[:]
+
+        # Add the world transform to the nodes, ignore scale
+        mat_w = apply_world_matrix(matrix, mat_world)
+        
+        dq = dq_negate(dq_create_matrix(mat_w))             # negate != invert (!!)
+        vals = dq_to_tuple_xyzw(dq)
+
+        rig_bytes.extend(pack('f'*len(vals), *vals))
+        rig_bytes.extend(pack('I', parent_bone_index))      # node[@ eAnimNode.Parent]
+        rig_bytes.extend(pack('B', connected))              # node[@ eAnimNode.IsBone]
+        rig_bytes.extend(pack('fff', *(0, 0, 0)))           # Primary IK axis (default all zeroes)
+    
+    if out_bones != None:
+        # Copy bone list to out parameter if it was passed
+        out_bones.extend(bones)
+    
+    return rig_bytes
+
+def export_smf_main(operator, context,
+               filepath,
+               export_textures,
+               export_type,
+               anim_export_mode,
+               anim_length_mode,
+               multiplier,
+               subdivisions,
+               interpolation,
+               invert_uv_v,
+               bone_influences,
+               **kwargs,
+               ):
+    """
+    Main entry point for SMF exporter
+    """
+    
+    # Get data to export based on selection (or scene, possibly)
+    data = get_export_data(context.selected_objects)
+    print(data)
+    
+    for item in data:
+        # Export an SMF file
+        # export_smf_file()
+        pass
+    
+    return {'FINISHED'}
+
 def export_smf_file(operator, context,
                filepath,
                export_textures,
@@ -130,14 +255,14 @@ def export_smf_file(operator, context,
                **kwargs,
                ):
     """
-    Main entry point for SMF export
+    Export a single SMF model
     """
 
     # Figure out what we're going to export
     object_list = context.selected_objects
-    #model_list = [o for o in object_list if o.type=='MESH']
-    model_list = [o for o in object_list if o.type in meshlike_types]
-    armature_list = [o for o in object_list if o.type=='ARMATURE']
+    #model_list = [obj for obj in object_list if obj.type=='MESH']
+    model_list = [obj for obj in object_list if obj.type in meshlike_types]
+    armature_list = [obj for obj in object_list if obj.type=='ARMATURE']
 
     rig_object = None
     rig = None
@@ -178,73 +303,23 @@ def export_smf_file(operator, context,
     bone_names = []
 
     # Write rig
-    rig_bytes = bytearray()
-
+    bones = []
+    
     if not rig:
         # No (valid) armature for export
+        rig_bytes = bytearray()
         rig_bytes.extend(pack('I', 0))                              # nodeNum
     else:
-        # Construct node list for SMF
-        # (heads of disconnected bones need to become nodes, too)
-        bones = smf_node_list(rig_object)
-
-        # Get the bindmap and relevant bone names
-        bindmap = smf_bindmap(bones)
-        bone_names = bindmap.keys()
-
-        rig_bytes.extend(pack('I', len(bones)))                     # nodeNum
-
         if not rig.bones:
             #self.report({'WARNING'},"Armature has no bones. Exporting empty rig.")
             pass
-
-        print("RIG")
-        print("---")
-        debug_rig = []
-        debug_vals = []
-        # Make sure to have a root bone!
-        for n, bone in enumerate(bones):
-            b = bone if bone else bones[n+1]
-
-            parent_bone_index = 0 if not b.parent else bones.index(b.parent)
-            connected = b.use_connect
-
-            if bone and b.parent and not b.use_connect:
-                # This is a node for which an added node has been written
-                parent_bone_index = n-1
-                connected = True
-                bones[parent_bone_index] = False            # This makes sure the "if bone" check keeps returning False!
-
-            # Construct node matrix
-            position_attr = 'tail_local' if bone else 'head_local'
-            matrix = b.matrix_local.copy()
-            matrix.translation = getattr(b, position_attr)[:]
-
-            # Add the world transform to the nodes, ignore scale
-            mat_w = apply_world_matrix(matrix, rig_object.matrix_world)
-            
-            dq = dq_negate(dq_create_matrix(mat_w)) # negate != invert (!!)
-            vals = dq_to_tuple_xyzw(dq)
-
-            rig_bytes.extend(pack('f'*len(vals), *vals))
-            rig_bytes.extend(pack('I', parent_bone_index))      # node[@ eAnimNode.Parent]
-            rig_bytes.extend(pack('B', connected))              # node[@ eAnimNode.IsBone]
-            rig_bytes.extend(pack('fff', *(0, 0, 0)))           # Primary IK axis (default all zeroes)
-
-            t = mat_w.translation
-            name = b.name if position_attr == 'tail_local' else "Inserted for " + b.name
-            debug_rig.append((n, name, t[0], t[1], t[2], parent_bone_index, connected))
-            debug_vals.append(str(["{0:.3f}".format(elem) for elem in vals]))
-
-        # Print some extended, readable debug info
-        print("SMF Node List")
-        print("-------------")
-        for i, d in enumerate(debug_rig):
-            s = "{0:>4d} ({5:<3d}, {6:d}) - {1:<40} {2:<.3f} {3:<.3f} {4:<.3f}".format(*d)
-            print(s)
-            print(debug_vals[i])
-
-    # Write models, list the unique Blender materials in use while we're at it
+        
+        rig_bytes = get_rig_bytedata(rig, rig_object.matrix_world, bones)
+    
+    # Write models, list the unique Blender materials in use while we're at
+    bindmap = smf_bindmap(bones)                    # First get the bindmap and relevant bone names
+    bone_names = bindmap.keys()
+    
     dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
     unique_materials = set()
     unique_images = set()
@@ -258,12 +333,13 @@ def export_smf_file(operator, context,
         # First, see if this mesh object has an Armature modifier set
         # Set to rest pose if that's the case
         # TODO What else needs to be done here for this to work flawlessly?
+        # TODO Look for the armature modifier that has the parent as the armature object (might be multiple..)
         mods = [mod for mod in obj.modifiers if mod.type == "ARMATURE"]
         arma = None
         if mods and mods[0].object:
-                arma = mods[0].object.data
-                arma_prev_position = arma.pose_position
-                arma.pose_position = 'REST'
+            arma = mods[0].object.data
+            arma_prev_position = arma.pose_position
+            arma.pose_position = 'REST'
 
         # Update the depsgraph!
         # This is important since it actually applies
@@ -339,9 +415,9 @@ def export_smf_file(operator, context,
             model_bytes.extend(pack('I', len(ba)))
             model_bytes.extend(ba)
             mat = None
+            img = None
             if obj.material_slots:
                 mat = obj.material_slots[index].material
-            img = None
             if mat:
                 unique_materials.add(mat)
                 img = texture_image_from_node_tree(mat)
@@ -445,8 +521,6 @@ def export_smf_file(operator, context,
 
     # Export each NLA track linked to the armature object as an animation
     # (use the first action's name as the animation name for now)
-    print("ANIMATION")
-    print("---------")
 
     # Common variables
     render = context.scene.render
@@ -492,7 +566,9 @@ def export_smf_file(operator, context,
 
         # Determine keyframe times
         if   export_type == 'KFR':
+            # TODO Check if there are any keyframes! (not an issue when sampling..)
             kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
+            print(kf_times)
             kf_end = kf_times[len(kf_times)-1]
         elif export_type == 'SPL':
             kf_times = []
@@ -541,8 +617,6 @@ def export_smf_file(operator, context,
         file.write(model_bytes)
         file.write(rig_bytes)
         file.write(animation_bytes)
-
-    return {'FINISHED'}
 
 def fix_keyframe_dq(dq, frame_index, node_index):
     """Fix the keyframe DQ to make sure the animation doesn't look choppy"""
