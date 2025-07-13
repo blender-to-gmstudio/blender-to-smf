@@ -5,6 +5,7 @@ from struct import Struct, pack, calcsize
 from mathutils import *
 from math import *
 
+import os
 import numpy as np
 
 # Make sure to reload changes to code that we maintain ourselves
@@ -29,7 +30,7 @@ from .pydq import (
     dq_to_tuple_xyzw,
 )
 
-SMF_version = 12    # SMF 'export' version
+SMF_version = 13    # SMF 'export' version
 SMF_format_struct = Struct("ffffffffBBBBBBBBBBBB")  # 44 bytes
 SMF_format_size = SMF_format_struct.size
 
@@ -115,12 +116,37 @@ def smf_skin_indices_weights(vertices, index_map, num_influences=4):
 
     return (indices, weights)
 
-def get_export_data(object_list):
-    """Get the export data"""
+def get_export_data(scene, object_list):
+    """
+    
+    Get a dictionary holding all rigs to be exported from the given list of scene objects 
+    with enough information to be passed on to the actual export function.
+    
+    When mapping Blender data to SMF models, every rig becomes its own SMF file.
+    
+    """
+    
+    # TODO Include groups!
     
     # Traverse objects, group costumes by unique rig
     # Every unique armature data block indicates an SMF rig and, therefore, a new model and file
     rigs = {}
+    """
+    rigs = {
+        scene: {  # Holds all static meshes not parented to an armature object (rather directly to scene)
+            'models': [],
+            'costumes': {},
+        }
+    }
+    """
+    
+    # Get all root armatures (i.e. at the root of a transform hierarchy)
+    rig_objects = [obj for obj in object_list if obj.type == 'ARMATURE' and not obj.parent]
+    
+    if not rig_objects:
+        # Only static models
+        rigs[scene]['models'].extend(object_list)
+        return rigs
     
     for obj in object_list:
         if obj.type != 'MESH':
@@ -132,39 +158,37 @@ def get_export_data(object_list):
         arma_object = mods[0].object if mods else None
         arma_data = arma_object.data if arma_object else None
         
-        rig_name = arma_data.name
-        if rig_name not in rigs:
+        if not arma_data:
+            # No armature data linked to model -> Add model to static
+            # rigs[scene]['models'].append(obj)
+            continue
+        
+        if arma_data not in rigs:
             # Initialize data for a new rig/SMF file
-            rigs[rig_name] = {}
-            rigs[rig_name]['models'] = []
-            rigs[rig_name]["costumes"] = {}
-            rigs[rig_name]['animations'] = set()
+            rigs[arma_data] = {}
+            rigs[arma_data]['models'] = []
+            rigs[arma_data]['costumes'] = {}
         
-        models = rigs[rig_name]['models']
-        costumes = rigs[rig_name]["costumes"]
-        animations = rigs[rig_name]['animations']
+        models = rigs[arma_data]['models']
+        costumes = rigs[arma_data]['costumes']
         
-        # Add animation(s) found on the armature object, if any
-        # (currently simplified as just the current action)
-        if arma_object:
-            if arma_object.animation_data:
-                if arma_object.animation_data.action:
-                    animations.add(arma_object.animation_data.action.name)
+        # Find index of the model with the given mesh name or create new one
+        # TODO Do a more advanced, thorough check to see if two meshes are "identical"
+        #      (Taking modifier stack and possibly other things into account)
         
-        # Find index or create new one
         ind = -1
-        mesh = obj.data
         try:
-            ind = models.index(mesh.name)
+            mesh_names = [mesh_object.data.name for mesh_object in models]
+            ind = mesh_names.index(mesh.name)
         except:
-            models.append(mesh.name)
+            models.append(obj)
             ind = len(models) - 1
         
-        costume_name = arma_object.name
-        if costume_name not in costumes:
-            costumes[costume_name] = []
+        costume = arma_object
+        if costume not in costumes:
+            costumes[costume] = []
         
-        costumes[costume_name].append(ind)
+        costumes[costume].append(ind)
     
     return rigs
 
@@ -189,7 +213,7 @@ def get_rig_bytedata(rig, mat_world, out_bones=None):
             # This is a node for which an added node has been written
             parent_bone_index = n-1
             connected = True
-            bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False!
+            bones[parent_bone_index] = False                # This makes sure the "if bone" check keeps returning False (still "falsy"!)
 
         # Construct node matrix
         position_attr = 'tail_local' if bone else 'head_local'
@@ -231,45 +255,78 @@ def export_smf_main(operator, context,
     """
     
     # Get data to export based on selection (or scene, possibly)
-    data = get_export_data(context.selected_objects)
-    print(data)
+    rigs_to_export = get_export_data(context.scene, context.selected_objects)
     
-    for item in data:
+    print(rigs_to_export)
+    #return {'FINISHED'}
+    
+    depsgraph = context.evaluated_depsgraph_get()
+    
+    for index, key in enumerate(rigs_to_export):
+        root, ext = os.path.splitext(filepath)
+        
+        # Append a suffix number
+        # TODO Add support for appending the armature (data) name instead!
+        curfilepath = root + str(index+1) + ext
+        
+        value = rigs_to_export[key]
+        
         # Export an SMF file
-        # export_smf_file()
-        pass
+        export_smf_file(curfilepath,
+            context.scene,
+            depsgraph,
+            value['models'],
+            value['costumes'],
+            export_textures,
+            export_type,
+            anim_export_mode,
+            anim_length_mode,
+            multiplier,
+            subdivisions,
+            interpolation,
+            invert_uv_v,
+            bone_influences,
+            )
     
     return {'FINISHED'}
 
-def export_smf_file(operator, context,
-               filepath,
-               export_textures,
-               export_type,
-               anim_export_mode,
-               anim_length_mode,
-               multiplier,
-               subdivisions,
-               interpolation,
-               invert_uv_v,
-               bone_influences,
-               **kwargs,
-               ):
+def export_smf_file(filepath,
+            scene,
+            depsgraph,
+            model_objects,
+            costumes,
+            export_textures,
+            export_type,
+            anim_export_mode,
+            anim_length_mode,
+            multiplier,
+            subdivisions,
+            interpolation,
+            invert_uv_v,
+            bone_influences,
+            **kwargs,
+            ):
     """
     Export a single SMF model
     """
+    
+    # TODO Get rid of context and get the scene using Object.users_scene? (what if linked to multiple?)
 
-    # Figure out what we're going to export
-    object_list = context.selected_objects
+    # Figure out the details of what we're going to export to this file
     #model_list = [obj for obj in object_list if obj.type=='MESH']
-    model_list = [obj for obj in object_list if obj.type in meshlike_types]
-    armature_list = [obj for obj in object_list if obj.type=='ARMATURE']
-
-    rig_object = None
+    #model_list = [obj for obj in object_list if obj.type in meshlike_types]
+    #armature_list = [obj for obj in object_list if obj.type=='ARMATURE']
+    
     rig = None
-    anim = None
     animations = dict()     # Use a dictionary to preserve order of insertion!
-    if armature_list:
-        rig_object = armature_list[0]
+    
+    print("HERE!")
+    print(filepath)
+    print(model_objects)
+    print(costumes)
+    if costumes:
+        keys = [key for key in costumes.keys()]
+        rig_object = keys[0]
         rig = rig_object.data
         anim_data = rig_object.animation_data
         if anim_data:
@@ -292,12 +349,12 @@ def export_smf_file(operator, context,
                 pass
             else:
                 pass
-
+    
     # Make sure we don't try to export actions that look like they're linked
     # but don't exist anymore
     if None in animations:
         del animations[None]
-
+    
     # Write rig
     bones = []
     
@@ -316,20 +373,22 @@ def export_smf_file(operator, context,
     bindmap = smf_bindmap(bones)                    # First get the bindmap and relevant bone names
     bone_names = bindmap.keys()
     
-    dg = bpy.context.evaluated_depsgraph_get()      # We'll need this thing soon
     unique_materials = set()
     unique_images = set()
     model_bytes = bytearray()
     model_number = 0
     model_bytes.extend(pack('B', model_number))     # Reserve a byte for model count
-    for obj in model_list:
+    for obj in model_objects:
+        # TODO 
+        # get_model_bytedata()
+        
         # Create a triangulated copy of the mesh
         # that has everything applied (modifiers, transforms, etc.)
 
         # First, see if this mesh object has an Armature modifier set
         # Set to rest pose if that's the case
         # TODO What else needs to be done here for this to work flawlessly?
-        # TODO Look for the armature modifier that has the parent as the armature object (might be multiple..)
+        # TODO Look for the armature modifier that has the parent object as the armature object (might be multiple..)
         mods = [mod for mod in obj.modifiers if mod.type == "ARMATURE"]
         arma = None
         if mods and mods[0].object:
@@ -340,14 +399,14 @@ def export_smf_file(operator, context,
         # Update the depsgraph!
         # This is important since it actually applies
         # the change to 'REST' position to the data
-        dg.update()
+        depsgraph.update()
 
         # The new way of doing things using the context depsgraph
         # Get an evaluated version of the current object
         # This includes modifiers, etc.
         # The world transform is not applied to the mesh
-        obj_eval = obj.evaluated_get(dg)
-        mesh = bpy.data.meshes.new_from_object(obj_eval, preserve_all_data_layers=True, depsgraph=dg)
+        obj_eval = obj.evaluated_get(depsgraph)
+        mesh = bpy.data.meshes.new_from_object(obj_eval, preserve_all_data_layers=True, depsgraph=depsgraph)
         prep_mesh(obj, mesh)
 
         # Reset pose_position setting
@@ -423,13 +482,23 @@ def export_smf_file(operator, context,
             img_name = img.name if img else ""
             model_bytes.extend(bytearray(mat_name + '\0', 'utf-8'))
             model_bytes.extend(bytearray(img_name + '\0', 'utf-8'))
-            model_bytes.extend(pack('B',int(not obj.hide_viewport)))
+            model_bytes.extend(pack('B', int(not obj.hide_viewport)))
 
         # Delete triangulated copy of the mesh
         bpy.data.meshes.remove(mesh)
 
     # Now write the correct model count
     model_bytes[0] =  model_number
+
+    # Write costumes
+    costume_bytes = bytearray()
+    costume_bytes.extend(pack('B', len(costumes)))
+    for costume_object in costumes.keys():
+        costume_bytes.extend(bytearray(costume_object.name + '\0', 'utf-8'))
+        indices = costumes[costume_object]
+        num_indices = int(len(indices))
+        costume_bytes.extend(pack('B', num_indices))
+        costume_bytes.extend(pack('B' * num_indices, *indices))
 
     # Write textures and their image data (same thing as seen from SMF)
 
@@ -519,7 +588,7 @@ def export_smf_file(operator, context,
     # (use the first action's name as the animation name for now)
 
     # Common variables
-    render = context.scene.render
+    render = scene.render
     fps = render.fps/render.fps_base
 
     # Write all animations (i.e. actions)
@@ -547,8 +616,6 @@ def export_smf_file(operator, context,
 
     animation_bytes.extend(pack('B', len(animations)))
     for anim in animations:
-        print(anim)
-
         # Remember state
         anim_data = rig_object.animation_data
         action_prev = anim_data.action
@@ -561,7 +628,7 @@ def export_smf_file(operator, context,
         anim_data.action = anim
 
         # Determine keyframe times
-        if   export_type == 'KFR':
+        if  export_type == 'KFR':
             # TODO Check if there are any keyframes! (not an issue when sampling..)
             kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
             print(kf_times)
@@ -575,8 +642,6 @@ def export_smf_file(operator, context,
             # We shouldn't end up here
             pass
 
-        #print(kf_times)
-
         # Play and write animation data
         if interpolation == "KFR":
             interpolation = 0
@@ -585,7 +650,7 @@ def export_smf_file(operator, context,
         if interpolation == "QAD":
             interpolation = 2
 
-        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
+        write_animation_data(anim.name, scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
 
         # Restore to previous state
         rig_object.animation_data.action = action_prev
@@ -596,21 +661,29 @@ def export_smf_file(operator, context,
     version_string = "SMF_v{}_by_Snidr_and_Bart\0".format(SMF_version)
     header_bytes = bytearray(version_string, 'utf-8')
 
-    tex_pos = len(header_bytes) + calcsize('IIIII')
+    tex_pos = len(header_bytes) + calcsize('IIIIII')
     mod_pos = tex_pos + len(texture_bytes)
-    rig_pos = mod_pos + len(model_bytes)
+    cos_pos = mod_pos + len(model_bytes)
+    rig_pos = cos_pos + len(costume_bytes)
     ani_pos = rig_pos + len(rig_bytes)
-    offsets = (tex_pos, mod_pos, rig_pos, ani_pos)
+    offsets = (tex_pos, mod_pos, cos_pos, rig_pos, ani_pos)
     header_bytes.extend(pack('I' * len(offsets), *offsets))
 
     placeholder_byte = 0
     header_bytes.extend(pack('I', placeholder_byte))
+    
+    print("tex pos:" + str(tex_pos))
+    print("mod pos:" + str(mod_pos))
+    print("cos pos:" + str(cos_pos))
+    print("rig pos:" + str(rig_pos))
+    print("ani pos:" + str(ani_pos))
 
     # Write everything to file
     with open(filepath, "wb") as file:
         file.write(header_bytes)
         file.write(texture_bytes)
         file.write(model_bytes)
+        file.write(costume_bytes)
         file.write(rig_bytes)
         file.write(animation_bytes)
 

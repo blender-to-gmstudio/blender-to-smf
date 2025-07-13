@@ -37,7 +37,7 @@ from bpy_extras.io_utils import (
 from . import export_smf
 from . import import_smf
 
-from .export_smf import export_smf_file
+from .export_smf import export_smf_main
 from .import_smf import import_smf_file
 
 
@@ -80,6 +80,16 @@ class ExportSMF(Operator, ExportHelper):
         default="*.smf",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+    
+    export_selection: EnumProperty(
+        name="Export Selection",
+        description="Whether to export the object selection or the entire scene",
+        items=[
+            ("SEL", "Export Object Selection", "Export the current selection of objects"),
+            ("SCN", "Export Entire Scene", "Export the entire scene, with the scene as transform root"),
+        ],
+        default="SEL",
     )
 
     export_textures: BoolProperty(
@@ -184,7 +194,7 @@ class ExportSMF(Operator, ExportHelper):
 
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
-        return export_smf_file(self, context, **keywords)
+        return export_smf_main(self, context, **keywords)
 
     def draw(self, context):
         # Everything gets displayed through the panels that are defined below
