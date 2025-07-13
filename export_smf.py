@@ -257,9 +257,6 @@ def export_smf_main(operator, context,
     # Get data to export based on selection (or scene, possibly)
     rigs_to_export = get_export_data(context.scene, context.selected_objects)
     
-    print(rigs_to_export)
-    #return {'FINISHED'}
-    
     depsgraph = context.evaluated_depsgraph_get()
     
     for index, key in enumerate(rigs_to_export):
@@ -320,10 +317,6 @@ def export_smf_file(filepath,
     rig = None
     animations = dict()     # Use a dictionary to preserve order of insertion!
     
-    print("HERE!")
-    print(filepath)
-    print(model_objects)
-    print(costumes)
     if costumes:
         keys = [key for key in costumes.keys()]
         rig_object = keys[0]
@@ -671,12 +664,6 @@ def export_smf_file(filepath,
 
     placeholder_byte = 0
     header_bytes.extend(pack('I', placeholder_byte))
-    
-    print("tex pos:" + str(tex_pos))
-    print("mod pos:" + str(mod_pos))
-    print("cos pos:" + str(cos_pos))
-    print("rig pos:" + str(rig_pos))
-    print("ani pos:" + str(ani_pos))
 
     # Write everything to file
     with open(filepath, "wb") as file:
