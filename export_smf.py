@@ -132,6 +132,7 @@ def get_export_data(scene, object_list):
     # Every unique armature data block indicates an SMF rig and, therefore, a new model and file
     rigs = {}
     """
+    # TODO
     rigs = {
         scene: {  # Holds all static meshes not parented to an armature object (rather directly to scene)
             'models': [],
@@ -160,6 +161,7 @@ def get_export_data(scene, object_list):
         
         if not arma_data:
             # No armature data linked to model -> Add model to static
+            # TODO
             # rigs[scene]['models'].append(obj)
             continue
         
@@ -179,7 +181,7 @@ def get_export_data(scene, object_list):
         ind = -1
         try:
             mesh_names = [mesh_object.data.name for mesh_object in models]
-            ind = mesh_names.index(mesh.name)
+            ind = mesh_names.index(obj.data.name)
         except:
             models.append(obj)
             ind = len(models) - 1
@@ -256,6 +258,7 @@ def export_smf_main(operator, context,
     
     # Get data to export based on selection (or scene, possibly)
     rigs_to_export = get_export_data(context.scene, context.selected_objects)
+    #print(rigs_to_export)
     
     depsgraph = context.evaluated_depsgraph_get()
     
@@ -267,6 +270,7 @@ def export_smf_main(operator, context,
         curfilepath = root + str(index+1) + ext
         
         value = rigs_to_export[key]
+        print(value)
         
         # Export an SMF file
         export_smf_file(curfilepath,
