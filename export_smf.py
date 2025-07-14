@@ -47,10 +47,13 @@ def prep_mesh(obj, mesh):
     """Prepare the given mesh for export to SMF"""
 
     # Transform to world coordinates
-    mat = Matrix.Scale(-1, 4, Vector([0, 1, 0]))
-    mesh.transform(obj.matrix_world)
+    #mesh.transform(obj.matrix_world)
+    
+    # Transform to coordinates relative to armature parent
+    mesh.transform(obj.matrix_local)
 
     # Invert Y
+    mat = Matrix.Scale(-1, 4, Vector([0, 1, 0]))
     mesh.transform(mat)
     mesh.flip_normals()
     
@@ -698,7 +701,8 @@ def fix_keyframe_dq(dq, frame_index, node_index):
 
 def apply_world_matrix(matrix, matrix_world):
     """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
-    mat_w = matrix_world.copy()
+    #mat_w = matrix_world.copy()
+    mat_w = Matrix.Identity(4)
     mat_w @= matrix
 
     # Decompose to get rid of scale
