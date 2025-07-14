@@ -45,9 +45,6 @@ meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
 def prep_mesh(obj, mesh):
     """Prepare the given mesh for export to SMF"""
-
-    # Transform to world coordinates
-    #mesh.transform(obj.matrix_world)
     
     # Transform to coordinates relative to armature parent
     mesh.transform(obj.matrix_local)
@@ -226,7 +223,7 @@ def get_rig_bytedata(rig, mat_world, out_bones=None):
         matrix.translation = getattr(b, position_attr)[:]
 
         # Add the world transform to the nodes, ignore scale
-        mat_w = apply_world_matrix(matrix, mat_world)
+        mat_w = transform_matrix_to_smf(matrix)
         
         dq = dq_negate(dq_create_matrix(mat_w))             # negate != invert (!!)
         vals = dq_to_tuple_xyzw(dq)
@@ -566,7 +563,7 @@ def export_smf_file(filepath,
                     mat = Matrix()
 
                 mat.translation = bone.tail[:]
-                mat_final = apply_world_matrix(mat, rig_object.matrix_world)
+                mat_final = transform_matrix_to_smf(mat)
                 mat_final.normalize()
                 dq = dq_negate(dq_create_matrix(mat_final)) # negate != invert (!!)
                 # print(format_iterable(dq_to_tuple_xyzw(dq)))
@@ -699,11 +696,9 @@ def fix_keyframe_dq(dq, frame_index, node_index):
 
     return dq
 
-def apply_world_matrix(matrix, matrix_world):
-    """Applies the world matrix to the given bone matrix and makes sure scaling effects are ignored."""
-    #mat_w = matrix_world.copy()
-    mat_w = Matrix.Identity(4)
-    mat_w @= matrix
+def transform_matrix_to_smf(matrix):
+    """Convert the given matrix to a matrix for SMF, making sure scaling effects are ignored."""
+    mat_w = matrix.copy()
 
     # Decompose to get rid of scale
     deco = mat_w.decompose()
@@ -722,11 +717,6 @@ def apply_world_matrix(matrix, matrix_world):
     mat_w.row[1] *= -1
 
     return mat_w
-
-def transform_matrix_to_smf(matrix):
-    """"""
-    # TODO Split up the two transforms properly (see apply_world_matrix)
-    pass
 
 def texture_image_from_node_tree(material):
     "Try to get a texture Image from the given material's node tree"
