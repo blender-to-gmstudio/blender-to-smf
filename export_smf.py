@@ -272,12 +272,16 @@ def export_smf_main(operator, context,
         value = rigs_to_export[key]
         print(value)
         
+        active = context.active_object
+        costume_default = active.name if active in value['costumes'] else ""
+        
         # Export an SMF file
         export_smf_file(curfilepath,
             context.scene,
             depsgraph,
             value['models'],
             value['costumes'],
+            costume_default,
             export_textures,
             export_type,
             anim_export_mode,
@@ -296,6 +300,7 @@ def export_smf_file(filepath,
             depsgraph,
             model_objects,
             costumes,
+            costume_default,
             export_textures,
             export_type,
             anim_export_mode,
@@ -496,6 +501,9 @@ def export_smf_file(filepath,
         num_indices = int(len(indices))
         costume_bytes.extend(pack('B', num_indices))
         costume_bytes.extend(pack('B' * num_indices, *indices))
+    
+    # TODO Is active the active within the current model? (in case of batch export)
+    costume_bytes.extend(bytearray(costume_default + '\0', 'utf-8'))
 
     # Write textures and their image data (same thing as seen from SMF)
 
