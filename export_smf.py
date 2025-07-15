@@ -43,6 +43,7 @@ b41_up = version[0] == 4 and version[1] >= 1  # Blender 4.1 and up
 # Mesh-like objects (the ones that can be converted to mesh)
 meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
+
 def prep_mesh(obj, mesh):
     """Prepare the given mesh for export to SMF"""
     
@@ -64,6 +65,7 @@ def prep_mesh(obj, mesh):
     if not b41_up:
         mesh.calc_normals_split()
 
+
 def smf_node_list(armature):
     """Construct the SMF node list from the given Armature object"""
     # TODO Insert root node (optional?)
@@ -74,6 +76,7 @@ def smf_node_list(armature):
             pos = bones.index(bone)
             bones.insert(pos, None)
     return bones
+
 
 def smf_bindmap(bones):
     """Construct the SMF bindmap from the given list of Blender bones"""
@@ -89,6 +92,7 @@ def smf_bindmap(bones):
         bindmap[node.name] = sample_bone_ind
         sample_bone_ind = sample_bone_ind + 1
     return bindmap
+
 
 def smf_skin_indices_weights(vertices, index_map, num_influences=4):
     """Get skinning info from all vertices"""
@@ -115,6 +119,40 @@ def smf_skin_indices_weights(vertices, index_map, num_influences=4):
             weights[v.index][index] = int(w if w <= 255 else 255) # ubyte range!
 
     return (indices, weights)
+
+
+def is_modifier_identical(mod1, mod2):
+    # TODO Remove irrelevant props!
+    """Checks whether two modifiers are identical based on their attribute values"""
+    for prop in mod1.bl_rna.properties:
+        ident = prop.identifier
+        if getattr(mod1, ident) != getattr(mod2, ident):
+            return False
+    return True
+
+
+def is_modifier_stack_identical(obj1, obj2):
+    """Checks if two objects' modifier stacks are identical"""
+    if len(obj1.modifiers) != len(obj2.modifiers):
+        return False
+    
+    for index, mod1 in enumerate(obj1.modifiers):
+        # Skip armature modifier linking the parent object!
+        if mod1.type == 'ARMATURE' and mod1.object == obj1.parent:
+            continue
+        
+        if not is_modifier_identical(mod1, obj2.modifiers[index]):
+            return False
+    return True
+
+
+def is_resulting_mesh_identical(mesh_object1, mesh_object2):
+    """Checks if the resulting mesh of two objects is identical"""
+    meshes_linked = mesh_object1.data == mesh_object2.data
+    matrices_identical = mesh_object1.matrix_local == mesh_object2.matrix_local
+    modifier_stacks_identical = is_modifier_stack_identical(mesh_object1, mesh_object2)
+    return (meshes_linked and matrices_identical and modifier_stacks_identical)
+
 
 def get_export_data(scene, object_list):
     """
@@ -150,8 +188,8 @@ def get_export_data(scene, object_list):
         return rigs
     
     for obj in object_list:
-        if obj.type != 'MESH':
-            # Only consider meshes
+        if obj.type not in meshlike_types:
+            # Only consider meshlike objects
             continue
         
         # Find an armature modifier on this 'MESH' type object
@@ -179,10 +217,12 @@ def get_export_data(scene, object_list):
         #      (Taking modifier stack and possibly other things into account)
         
         ind = -1
-        try:
-            mesh_names = [mesh_object.data.name for mesh_object in models]
-            ind = mesh_names.index(obj.data.name)
-        except:
+        for index, mesh_object in enumerate(models):
+            if is_resulting_mesh_identical(mesh_object, obj):
+                ind = index
+                break
+        
+        if ind == -1:
             models.append(obj)
             ind = len(models) - 1
         
@@ -193,6 +233,7 @@ def get_export_data(scene, object_list):
         costumes[costume].append(ind)
     
     return rigs
+
 
 def get_rig_bytedata(rig, mat_world, out_bones=None):
     """Get the final bytedata to be written for the given rig"""
@@ -238,6 +279,7 @@ def get_rig_bytedata(rig, mat_world, out_bones=None):
         out_bones.extend(bones)
     
     return rig_bytes
+
 
 def export_smf_main(operator, context,
                filepath,
@@ -294,6 +336,7 @@ def export_smf_main(operator, context,
             )
     
     return {'FINISHED'}
+
 
 def export_smf_file(filepath,
             scene,
@@ -686,6 +729,7 @@ def export_smf_file(filepath,
         file.write(rig_bytes)
         file.write(animation_bytes)
 
+
 def fix_keyframe_dq(dq, frame_index, node_index):
     """Fix the keyframe DQ to make sure the animation doesn't look choppy"""
     if node_index > 0:
@@ -703,6 +747,7 @@ def fix_keyframe_dq(dq, frame_index, node_index):
         dq = dq_get_product(world_dq_conjugate, dq)
 
     return dq
+
 
 def transform_matrix_to_smf(matrix):
     """Convert the given matrix to a matrix for SMF, making sure scaling effects are ignored."""
@@ -725,6 +770,7 @@ def transform_matrix_to_smf(matrix):
     mat_w.row[1] *= -1
 
     return mat_w
+
 
 def texture_image_from_node_tree(material):
     "Try to get a texture Image from the given material's node tree"
