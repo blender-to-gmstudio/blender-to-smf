@@ -184,6 +184,16 @@ def get_export_data(scene, object_list):
     }
     """
     
+    # If selection only has one object that is of type 'ARMATURE', export a file with only a rig
+    if len(object_list) == 1 and object_list[0].type == 'ARMATURE':
+        arma_object = object_list[0]
+        arma_data = arma_object.data
+        rigs[arma_data] = {}
+        rigs[arma_data]['models'] = []
+        rigs[arma_data]['costumes'] = {}
+        rigs[arma_data]['costumes'][arma_object] = []
+        return rigs
+    
     # Get all root armatures (i.e. at the root of a transform hierarchy)
     rig_objects = [obj for obj in object_list if obj.type == 'ARMATURE' and not obj.parent]
     
