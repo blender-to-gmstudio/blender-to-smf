@@ -122,10 +122,15 @@ def smf_skin_indices_weights(vertices, index_map, num_influences=4):
 
 
 def is_modifier_identical(mod1, mod2):
-    # TODO Remove irrelevant props!
     """Checks whether two modifiers are identical based on their attribute values"""
     for prop in mod1.bl_rna.properties:
         ident = prop.identifier
+        
+        # Skip modifier attributes that don't contribute
+        # to a change in geometry
+        if ident in ('rna_type', 'name', 'show_viewport', 'show_render', 'show_in_editmode', 'show_on_cage', 'show_expanded', 'is_override_data', 'execution_time', 'persistent_uid'):
+            continue
+        
         if getattr(mod1, ident) != getattr(mod2, ident):
             return False
     return True
@@ -184,7 +189,10 @@ def get_export_data(scene, object_list):
     
     if not rig_objects:
         # Only static models
+        rigs[scene] = {}
+        rigs[scene]['models'] = []
         rigs[scene]['models'].extend(object_list)
+        rigs[scene]['costumes'] = {}
         return rigs
     
     for obj in object_list:
