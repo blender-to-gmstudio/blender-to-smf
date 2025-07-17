@@ -150,13 +150,27 @@ def is_modifier_stack_identical(obj1, obj2):
             return False
     return True
 
+def are_material_slots_identical(obj1, obj2):
+    """Checks if the linked materials on two mesh objects are identical"""
+    if len(obj1.material_slots) != len(obj2.material_slots):
+        return False
+    
+    for index, slot1 in enumerate(obj1.material_slots):
+        mat1 = slot1.material if slot1.link == 'OBJECT' else obj1.data.materials[index]
+        slot2 = obj2.material_slots[index]
+        mat2 = slot2.material if slot2.link == 'OBJECT' else obj2.data.materials[index]
+        if not mat1 == mat2:
+            return False
+    
+    return True
 
 def is_resulting_mesh_identical(mesh_object1, mesh_object2):
     """Checks if the resulting mesh of two objects is identical"""
     meshes_linked = mesh_object1.data == mesh_object2.data
     matrices_identical = mesh_object1.matrix_local == mesh_object2.matrix_local
     modifier_stacks_identical = is_modifier_stack_identical(mesh_object1, mesh_object2)
-    return (meshes_linked and matrices_identical and modifier_stacks_identical)
+    material_slots_identical = are_material_slots_identical(mesh_object1, mesh_object2)
+    return (meshes_linked and matrices_identical and modifier_stacks_identical and material_slots_identical)
 
 
 def get_export_data(scene, object_list):
@@ -174,15 +188,6 @@ def get_export_data(scene, object_list):
     # Traverse objects, group costumes by unique rig
     # Every unique armature data block indicates an SMF rig and, therefore, a new model and file
     rigs = {}
-    """
-    # TODO
-    rigs = {
-        scene: {  # Holds all static meshes not parented to an armature object (rather directly to scene)
-            'models': [],
-            'costumes': {},
-        }
-    }
-    """
     
     # If selection only has one object that is of type 'ARMATURE', export a file with only a rig
     if len(object_list) == 1 and object_list[0].type == 'ARMATURE':
@@ -201,13 +206,13 @@ def get_export_data(scene, object_list):
         # Only static models
         rigs[scene] = {}
         rigs[scene]['models'] = []
-        rigs[scene]['models'].extend(object_list)
         rigs[scene]['costumes'] = {}
+        rigs[scene]['models'].extend(object_list)
         return rigs
     
     for obj in object_list:
+        # Only consider meshlike objects
         if obj.type not in meshlike_types:
-            # Only consider meshlike objects
             continue
         
         # Find an armature modifier on this 'MESH' type object
@@ -217,8 +222,11 @@ def get_export_data(scene, object_list):
         
         if not arma_data:
             # No armature data linked to model -> Add model to static
-            # TODO
-            # rigs[scene]['models'].append(obj)
+            if not scene in rigs:
+                rigs[scene] = {}
+                rigs[scene]['models'] = []
+                rigs[scene]['costumes'] = {}
+            rigs[scene]['models'].append(obj)
             continue
         
         if arma_data not in rigs:
@@ -231,9 +239,6 @@ def get_export_data(scene, object_list):
         costumes = rigs[arma_data]['costumes']
         
         # Find index of the model with the given mesh name or create new one
-        # TODO Do a more advanced, thorough check to see if two meshes are "identical"
-        #      (Taking modifier stack and possibly other things into account)
-        
         ind = -1
         for index, mesh_object in enumerate(models):
             if is_resulting_mesh_identical(mesh_object, obj):
@@ -327,10 +332,10 @@ def export_smf_main(operator, context,
         
         # Append a suffix number
         # TODO Add support for appending the armature (data) name instead!
+        # TODO Append no suffix if only one file
         curfilepath = root + str(index+1) + ext
         
         value = rigs_to_export[key]
-        print(value)
         
         active = context.active_object
         costume_default = active.name if active in value['costumes'] else ""
@@ -376,13 +381,6 @@ def export_smf_file(filepath,
     """
     Export a single SMF model
     """
-    
-    # TODO Get rid of context and get the scene using Object.users_scene? (what if linked to multiple?)
-
-    # Figure out the details of what we're going to export to this file
-    #model_list = [obj for obj in object_list if obj.type=='MESH']
-    #model_list = [obj for obj in object_list if obj.type in meshlike_types]
-    #armature_list = [obj for obj in object_list if obj.type=='ARMATURE']
     
     rig = None
     animations = dict()     # Use a dictionary to preserve order of insertion!
@@ -535,7 +533,8 @@ def export_smf_file(filepath,
             mat = None
             img = None
             if obj.material_slots:
-                mat = obj.material_slots[index].material
+                slot = obj.material_slots[index]
+                mat = slot.material if slot.link == 'OBJECT' else obj.data.materials[index]
             if mat:
                 unique_materials.add(mat)
                 img = texture_image_from_node_tree(mat)
@@ -563,11 +562,9 @@ def export_smf_file(filepath,
         costume_bytes.extend(pack('B', num_indices))
         costume_bytes.extend(pack('B' * num_indices, *indices))
     
-    # TODO Is active the active within the current model? (in case of batch export)
     costume_bytes.extend(bytearray(costume_default + '\0', 'utf-8'))
 
     # Write textures and their image data (same thing as seen from SMF)
-
     texture_bytes = bytearray()
     if export_textures:
         texture_bytes.extend(pack('B', len(unique_images)))             # Number of unique images
@@ -809,6 +806,8 @@ def texture_image_from_node_tree(material):
         if node.image.has_data:
             return node.image
         else:
+            # TODO Check if image file is packed (has_data returns false in that case..)
+            return None
             """
             operator.report({'WARNING'}, (
             "Image " + node.image.name + " "
