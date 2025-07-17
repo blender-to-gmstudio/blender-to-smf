@@ -82,6 +82,12 @@ class ExportSMF(Operator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
     
+    append_name: BoolProperty(
+        name="Append Name",
+        description="Whether to append the rig name instead of a suffix number",
+        default=True,
+    )
+    
     export_selection: EnumProperty(
         name="Export Selection",
         description="Whether to export the object selection or the entire scene",

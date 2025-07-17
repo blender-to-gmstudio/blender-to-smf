@@ -305,7 +305,7 @@ def get_rig_bytedata(rig, mat_world, out_bones=None):
 
 
 def export_smf_main(operator, context,
-               filepath,
+               filepath, append_name,
                export_textures,
                export_type,
                anim_export_mode,
@@ -327,13 +327,18 @@ def export_smf_main(operator, context,
     
     depsgraph = context.evaluated_depsgraph_get()
     
+    num = len(rigs_to_export)
+    root, ext = os.path.splitext(filepath)
+    
     for index, key in enumerate(rigs_to_export):
-        root, ext = os.path.splitext(filepath)
-        
-        # Append a suffix number
-        # TODO Add support for appending the armature (data) name instead!
-        # TODO Append no suffix if only one file
-        curfilepath = root + str(index+1) + ext
+        # Append armature name or suffix number to filename
+        if num == 1:
+            curfilepath = filepath
+        else:
+            if append_name:
+                curfilepath = root + "_" + key.name + ext
+            else:
+                curfilepath = root + str(index+1) + ext
         
         value = rigs_to_export[key]
         
