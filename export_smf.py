@@ -35,7 +35,8 @@ SMF_format_size = SMF_format_struct.size
 
 # Check Blender version
 version = bpy.app.version
-b41_up = (version[0] == 4 and version[1] >= 1) or (version[0] >= 5)  # Blender 4.1 and up
+b50_up = version[0] >= 5                                  # Blender 5.0 and up
+b41_up = (version[0] == 4 and version[1] >= 1) or b50_up  # Blender 4.1 and up
 
 ### EXPORT ###
 
@@ -386,9 +387,10 @@ def export_smf_file(operator, context,
     # Write animations
     animation_bytes = bytearray()
 
-    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, frame_max, fps, interpolation):
+    def write_animation_data(name, scene, byte_data, rig_object, keyframe_times, fps, interpolation):
         """Writes all animation data to bytearray byte_data. Used to keep the code a bit tidy."""
         frame_number = len(keyframe_times)
+        frame_max = keyframe_times[-1] if keyframe_times else 0
         animation_bytes.extend(bytearray(name + "\0", 'utf-8'))     # animName
         animation_bytes.extend(pack('B', True))                     # loop
         animation_bytes.extend(pack('f', frame_max/fps*1000))       # playTime (ms)
@@ -478,7 +480,7 @@ def export_smf_file(operator, context,
     animation_bytes.extend(pack('B', len(animations)))
     for anim in animations:
         print(anim)
-
+        
         # Remember state
         anim_data = rig_object.animation_data
         action_prev = anim_data.action
@@ -492,19 +494,32 @@ def export_smf_file(operator, context,
 
         # Determine keyframe times
         if   export_type == 'KFR':
-            kf_times = sorted({p.co[0] for fcurve in anim_data.action.fcurves for p in fcurve.keyframe_points})
-            kf_end = kf_times[len(kf_times)-1]
+            # Initialize to empty list, so assignment to kf_times will still loop correctly
+            fcurves = []
+            
+            # Get fcurves member in the right location
+            if b50_up:
+                try:
+                    # Try to get to fcurves
+                    fcurves = anim_data.action.layers[0].strips[0].channelbag(anim_data.action.slots[0]).fcurves
+                except:
+                    # Action exists but it appears some things weren't created yet..
+                    # It looks like layer, strips, etc., are created the moment you key something.
+                    # More importantly: no fcurves -> no keyframes!
+                    # See also: fcurve_ensure_for_datablock
+                    operator.report({'WARNING'}, anim_data.action.name + " has no layers.")
+            else:
+                fcurves = anim_data.action.fcurves
+            
+            kf_times = sorted({p.co[0] for fcurve in fcurves for p in fcurve.keyframe_points})
         elif export_type == 'SPL':
             kf_times = []
             for i in range(0, subdivisions+1):
                 kf_times.append(anim.frame_range[0] + (anim.frame_range[1]-anim.frame_range[0])*i/subdivisions)
-            kf_end = kf_times[subdivisions]
         else:
             # We shouldn't end up here
             pass
-
-        #print(kf_times)
-
+        
         # Play and write animation data
         if interpolation == "KFR":
             interpolation = 0
@@ -513,7 +528,7 @@ def export_smf_file(operator, context,
         if interpolation == "QAD":
             interpolation = 2
 
-        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, kf_end, fps, interpolation)
+        write_animation_data(anim.name, context.scene, animation_bytes, rig_object, kf_times, fps, interpolation)
 
         # Restore to previous state
         rig_object.animation_data.action = action_prev
