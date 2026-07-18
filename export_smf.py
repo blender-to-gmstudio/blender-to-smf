@@ -507,7 +507,7 @@ def export_smf_file(operator, context,
                     # It looks like layer, strips, etc., are created the moment you key something.
                     # More importantly: no fcurves -> no keyframes!
                     # See also: fcurve_ensure_for_datablock
-                    operator.report({'WARNING'}, anim_data.action.name + " has no layers.")
+                    operator.report({'WARNING'}, anim_data.action.name + " - Couldn't lookup fcurves.")
             else:
                 fcurves = anim_data.action.fcurves
             
