@@ -501,7 +501,7 @@ def export_smf_file(operator, context,
             if b50_up:
                 try:
                     # Try to get to fcurves
-                    fcurves = anim_data.action.layers[0].strips[0].channelbag(anim_data.action.slots[0]).fcurves
+                    fcurves = anim_data.action.layers[0].strips[0].channelbag(anim_data.action.slots.active).fcurves
                 except:
                     # Action exists but it appears some things weren't created yet..
                     # It looks like layer, strips, etc., are created the moment you key something.
