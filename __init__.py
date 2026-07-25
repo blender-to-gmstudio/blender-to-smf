@@ -194,79 +194,55 @@ class ExportSMF(Operator, ExportHelper):
         return export_smf_file(self, context, **keywords)
 
     def draw(self, context):
-        # Everything gets displayed through the panels that are defined below
-        pass
+        layout = self.layout
+        
+        is_file_browser = context.space_data.type == 'FILE_BROWSER'
+        
+        export_panel_general(layout, self, is_file_browser)
+        export_panel_advanced(layout, self, is_file_browser)
+
+
+def export_panel_general(layout, operator, is_file_browser):
+    header, body = layout.panel("SMF_export_general", default_closed=False)
+    header.use_property_split = True
+    header.use_property_decorate = False  # No animation.
+    header.label(text="General")
+    
+    if body:
+        body.prop(operator, 'export_textures')
+        body.prop(operator, "invert_uv_v")
+
+
+def export_panel_advanced(layout, operator, is_file_browser):
+    header, body = layout.panel("SMF_export_advanced", default_closed=True)
+    header.use_property_split = True
+    header.use_property_decorate = False  # No animation.
+    header.label(text="Advanced")
+    
+    if body:
+        body.prop(operator, 'anim_export_mode')
+        #body.prop(operator, 'anim_length_mode')
+
+        body.label(text="Sampling")
+        body.prop(operator, 'export_type')
+        if operator.export_type == 'SPL':
+            body.prop(operator, 'subdivisions')
+        
+        body.label(text="Skinning")
+        body.prop(operator, 'bone_influences')
+
+        body.label(text="Other")
+        #body.prop(operator, "normal_source")
+        body.prop(operator, 'interpolation')
+        body.prop(operator, 'multiplier')
+        #body.prop(operator, "scale")
+
 
 class IO_FH_smf(bpy.types.FileHandler):
     bl_idname = "IO_FH_smf"
     bl_label = "SMF"
     bl_export_operator = ExportSMF.bl_idname
     bl_file_extensions = ".smf"
-
-class SMF_PT_export_general(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "General"
-    bl_parent_id = "FILE_PT_operator"
-
-    @classmethod
-    def poll(cls, context):
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        return operator.bl_idname == "EXPORT_SCENE_OT_smf"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        layout.prop(operator, 'export_textures')
-        layout.prop(operator, "invert_uv_v")
-
-
-class SMF_PT_export_advanced(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "Advanced"
-    bl_parent_id = "FILE_PT_operator"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        return operator.bl_idname == "EXPORT_SCENE_OT_smf"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        layout.label(text="General")
-        layout.prop(operator, 'anim_export_mode')
-        #layout.prop(operator, 'anim_length_mode')
-
-        layout.label(text="Sampling")
-        layout.prop(operator, 'export_type')
-        if operator.export_type == 'SPL':
-            layout.prop(operator, 'subdivisions')
-        
-        layout.label(text="Skinning")
-        layout.prop(operator, 'bone_influences')
-
-        layout.label(text="Other")
-        #layout.prop(operator, "normal_source")
-        layout.prop(operator, 'interpolation')
-        layout.prop(operator, 'multiplier')
-        #layout.prop(operator, "scale")
 
 
 def menu_func_export(self, context):
@@ -278,8 +254,6 @@ def menu_func_import(self, context):
 
 
 classes = (
-    SMF_PT_export_general,
-    SMF_PT_export_advanced,
     ExportSMF,
     ImportSMF,  # Uncomment this to enable the WIP importer
     IO_FH_smf,
