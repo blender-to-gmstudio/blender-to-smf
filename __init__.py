@@ -195,6 +195,8 @@ class ExportSMF(Operator, ExportHelper):
 
     def draw(self, context):
         layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False  # No animation.
         
         is_file_browser = context.space_data.type == 'FILE_BROWSER'
         
@@ -204,8 +206,6 @@ class ExportSMF(Operator, ExportHelper):
 
 def export_panel_general(layout, operator, is_file_browser):
     header, body = layout.panel("SMF_export_general", default_closed=False)
-    header.use_property_split = True
-    header.use_property_decorate = False  # No animation.
     header.label(text="General")
     
     if body:
@@ -215,8 +215,6 @@ def export_panel_general(layout, operator, is_file_browser):
 
 def export_panel_advanced(layout, operator, is_file_browser):
     header, body = layout.panel("SMF_export_advanced", default_closed=True)
-    header.use_property_split = True
-    header.use_property_decorate = False  # No animation.
     header.label(text="Advanced")
     
     if body:
