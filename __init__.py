@@ -182,6 +182,14 @@ class ExportSMF(Operator, ExportHelper):
         default=False,
     )
     
+    # Whether to export the objects in the selected collection instead of the selection.
+    # Only used with manual export.
+    export_collection: BoolProperty(
+        name="Export Selected Collection",
+        description="Export objects in the selected collection instead of the selected objects.",
+        default=False,
+    )
+    
     # Special property used by Collection export
     collection: StringProperty(
         name="Source Collection",
@@ -190,6 +198,9 @@ class ExportSMF(Operator, ExportHelper):
     )
 
     def execute(self, context):
+        if self.export_collection:
+            self.collection = bpy.context.collection.name if bpy.context.collection else ""
+        
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf_file(self, context, **keywords)
 
@@ -211,6 +222,9 @@ def export_panel_general(layout, operator, is_file_browser):
     if body:
         body.prop(operator, 'export_textures')
         body.prop(operator, "invert_uv_v")
+        
+        if is_file_browser:
+            body.prop(operator, 'export_collection')
 
 
 def export_panel_advanced(layout, operator, is_file_browser):
