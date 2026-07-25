@@ -181,6 +181,13 @@ class ExportSMF(Operator, ExportHelper):
         description="Invert the v coordinate of uvs, i.e. export (u, 1 - v)",
         default=False,
     )
+    
+    # Special property used by Collection export
+    collection: StringProperty(
+        name="Source Collection",
+        description="Export only objects from this collection (and its children)",
+        default="",
+    )
 
     def execute(self, context):
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
@@ -190,6 +197,11 @@ class ExportSMF(Operator, ExportHelper):
         # Everything gets displayed through the panels that are defined below
         pass
 
+class IO_FH_smf(bpy.types.FileHandler):
+    bl_idname = "IO_FH_smf"
+    bl_label = "SMF"
+    bl_export_operator = ExportSMF.bl_idname
+    bl_file_extensions = ".smf"
 
 class SMF_PT_export_general(bpy.types.Panel):
     bl_space_type = 'FILE_BROWSER'
@@ -270,6 +282,7 @@ classes = (
     SMF_PT_export_advanced,
     ExportSMF,
     ImportSMF,  # Uncomment this to enable the WIP importer
+    IO_FH_smf,
 )
 
 
