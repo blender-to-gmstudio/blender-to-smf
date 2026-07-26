@@ -137,7 +137,7 @@ def export_smf_file(operator, context,
 
     # Figure out what we're going to export
     if collection:
-        object_list = bpy.data.collections[collection].objects
+        object_list = bpy.data.collections[collection].all_objects
     else:
         object_list = context.selected_objects
 
