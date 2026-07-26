@@ -252,7 +252,7 @@ def export_panel_advanced(layout, operator, is_file_browser):
 
 class IO_FH_smf(bpy.types.FileHandler):
     bl_idname = "IO_FH_smf"
-    bl_label = "SMF"
+    bl_label = "SMF (SnidrsModelFormat)"
     bl_export_operator = ExportSMF.bl_idname
     bl_file_extensions = ".smf"
 
