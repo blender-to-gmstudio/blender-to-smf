@@ -140,9 +140,11 @@ def export_smf_file(operator, context,
         object_list = bpy.data.collections[collection].objects
     else:
         object_list = context.selected_objects
-    
-    # TODO Add check on empty selection
-    
+
+    # Cancel if object list is empty
+    if not object_list:
+        operator.report({'WARNING'}, "Nothing to export")
+        return {'CANCELLED'}
 
     #model_list = [o for o in object_list if o.type=='MESH']
     model_list = [o for o in object_list if o.type in meshlike_types]
