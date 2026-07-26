@@ -181,80 +181,80 @@ class ExportSMF(Operator, ExportHelper):
         description="Invert the v coordinate of uvs, i.e. export (u, 1 - v)",
         default=False,
     )
+    
+    # Whether to export the objects in the selected collection instead of the selection.
+    # Only used with manual export.
+    export_collection: BoolProperty(
+        name="Export Selected Collection",
+        description="Export objects in the selected collection instead of the selected objects.",
+        default=False,
+    )
+    
+    # Special property used by Collection export
+    collection: StringProperty(
+        name="Source Collection",
+        description="Export only objects from this collection (and its children)",
+        default="",
+    )
 
     def execute(self, context):
+        if self.export_collection:
+            self.collection = bpy.context.collection.name if bpy.context.collection else ""
+        
         keywords = self.as_keywords(ignore=("check_existing", "filter_glob", "ui_tab"))
         return export_smf_file(self, context, **keywords)
 
     def draw(self, context):
-        # Everything gets displayed through the panels that are defined below
-        pass
-
-
-class SMF_PT_export_general(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "General"
-    bl_parent_id = "FILE_PT_operator"
-
-    @classmethod
-    def poll(cls, context):
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        return operator.bl_idname == "EXPORT_SCENE_OT_smf"
-
-    def draw(self, context):
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
-
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        layout.prop(operator, 'export_textures')
-        layout.prop(operator, "invert_uv_v")
-
-
-class SMF_PT_export_advanced(bpy.types.Panel):
-    bl_space_type = 'FILE_BROWSER'
-    bl_region_type = 'TOOL_PROPS'
-    bl_label = "Advanced"
-    bl_parent_id = "FILE_PT_operator"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        return operator.bl_idname == "EXPORT_SCENE_OT_smf"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False  # No animation.
-
-        sfile = context.space_data
-        operator = sfile.active_operator
-
-        layout.label(text="General")
-        layout.prop(operator, 'anim_export_mode')
-        #layout.prop(operator, 'anim_length_mode')
-
-        layout.label(text="Sampling")
-        layout.prop(operator, 'export_type')
-        if operator.export_type == 'SPL':
-            layout.prop(operator, 'subdivisions')
         
-        layout.label(text="Skinning")
-        layout.prop(operator, 'bone_influences')
+        is_file_browser = context.space_data.type == 'FILE_BROWSER'
+        
+        export_panel_general(layout, self, is_file_browser)
+        export_panel_advanced(layout, self, is_file_browser)
 
-        layout.label(text="Other")
-        #layout.prop(operator, "normal_source")
-        layout.prop(operator, 'interpolation')
-        layout.prop(operator, 'multiplier')
-        #layout.prop(operator, "scale")
+
+def export_panel_general(layout, operator, is_file_browser):
+    header, body = layout.panel("SMF_export_general", default_closed=False)
+    header.label(text="General")
+    
+    if body:
+        body.prop(operator, 'export_textures')
+        body.prop(operator, "invert_uv_v")
+        
+        if is_file_browser:
+            body.prop(operator, 'export_collection')
+
+
+def export_panel_advanced(layout, operator, is_file_browser):
+    header, body = layout.panel("SMF_export_advanced", default_closed=True)
+    header.label(text="Advanced")
+    
+    if body:
+        body.prop(operator, 'anim_export_mode')
+        #body.prop(operator, 'anim_length_mode')
+
+        body.label(text="Sampling")
+        body.prop(operator, 'export_type')
+        if operator.export_type == 'SPL':
+            body.prop(operator, 'subdivisions')
+        
+        body.label(text="Skinning")
+        body.prop(operator, 'bone_influences')
+
+        body.label(text="Other")
+        #body.prop(operator, "normal_source")
+        body.prop(operator, 'interpolation')
+        body.prop(operator, 'multiplier')
+        #body.prop(operator, "scale")
+
+
+class IO_FH_smf(bpy.types.FileHandler):
+    bl_idname = "IO_FH_smf"
+    bl_label = "SMF"
+    bl_export_operator = ExportSMF.bl_idname
+    bl_file_extensions = ".smf"
 
 
 def menu_func_export(self, context):
@@ -266,10 +266,9 @@ def menu_func_import(self, context):
 
 
 classes = (
-    SMF_PT_export_general,
-    SMF_PT_export_advanced,
     ExportSMF,
     ImportSMF,  # Uncomment this to enable the WIP importer
+    IO_FH_smf,
 )
 
 

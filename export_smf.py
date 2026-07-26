@@ -128,6 +128,7 @@ def export_smf_file(operator, context,
                interpolation,
                invert_uv_v,
                bone_influences,
+               collection,
                **kwargs,
                ):
     """
@@ -135,7 +136,16 @@ def export_smf_file(operator, context,
     """
 
     # Figure out what we're going to export
-    object_list = context.selected_objects
+    if collection:
+        object_list = bpy.data.collections[collection].objects
+    else:
+        object_list = context.selected_objects
+
+    # Cancel if object list is empty
+    if not object_list:
+        operator.report({'WARNING'}, "Nothing to export")
+        return {'CANCELLED'}
+
     #model_list = [o for o in object_list if o.type=='MESH']
     model_list = [o for o in object_list if o.type in meshlike_types]
     armature_list = [o for o in object_list if o.type=='ARMATURE']
