@@ -185,8 +185,8 @@ class ExportSMF(Operator, ExportHelper):
     # Whether to export the objects in the selected collection instead of the selection.
     # Only used with manual export.
     export_collection: BoolProperty(
-        name="Export Selected Collection",
-        description="Export objects in the selected collection instead of the selected objects.",
+        name="Export Active Collection",
+        description="Export objects in the active collection instead of the selected objects.",
         default=False,
     )
     
