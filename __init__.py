@@ -3,7 +3,7 @@ bl_info = {
     "description": "Export to SMF 12 (SnidrsModelFormat)",
     "author": "Bart Teunis",
     "version": (0, 9, 7),
-    "blender": (2, 80, 0),
+    "blender": (4, 5, 12),
     "location": "File > Export",
     "warning": "",  # used for warning icon and text in addons panel
     "doc_url": "https://github.com/blender-to-gmstudio/blender-to-smf/wiki",

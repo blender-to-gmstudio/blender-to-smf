@@ -35,8 +35,7 @@ SMF_format_size = SMF_format_struct.size
 
 # Check Blender version
 version = bpy.app.version
-b50_up = version[0] >= 5                                  # Blender 5.0 and up
-b41_up = (version[0] == 4 and version[1] >= 1) or b50_up  # Blender 4.1 and up
+b50_up = version[0] >= 5                            # Blender 5.0 and up
 
 ### EXPORT ###
 
@@ -67,9 +66,6 @@ def prep_mesh(obj, mesh):
         mesh.calc_tangents()
     except:
         tangents_calculated = False
-    
-    if not b41_up:
-        mesh.calc_normals_split()
     
     return tangents_calculated
 
