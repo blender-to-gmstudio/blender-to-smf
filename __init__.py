@@ -21,6 +21,7 @@ if "bpy" in locals():
         importlib.reload(import_smf)
 
 import bpy
+import os
 from bpy.types import Operator
 from bpy.props import (
     StringProperty,
@@ -198,6 +199,14 @@ class ExportSMF(Operator, ExportHelper):
     )
 
     def execute(self, context):
+        # Filepath check
+        # Can be missing dirname for collection export if .blend file wasn't saved yet
+        if os.path.dirname(self.filepath) == "":
+            self.report({'WARNING'}, ("Filepath has no directory part. "
+                "The .blend file might need to be saved a first time. "
+                "Cancelling..."))
+            return {'CANCELLED'}
+        
         if self.export_collection:
             self.collection = bpy.context.collection.name if bpy.context.collection else ""
         
