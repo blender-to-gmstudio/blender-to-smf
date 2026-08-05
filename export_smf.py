@@ -45,7 +45,9 @@ meshlike_types = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 
 def prep_mesh(obj, mesh):
     """Prepare the given mesh for export to SMF"""
-
+    
+    tangents_calculated = True
+    
     # Transform to world coordinates
     mat = Matrix.Scale(-1, 4, Vector([0, 1, 0]))
     mesh.transform(obj.matrix_world)
@@ -60,9 +62,16 @@ def prep_mesh(obj, mesh):
 
     # Calculate all needed data
     mesh.calc_loop_triangles()
-    mesh.calc_tangents()
+    
+    try:
+        mesh.calc_tangents()
+    except:
+        tangents_calculated = False
+    
     if not b41_up:
         mesh.calc_normals_split()
+    
+    return tangents_calculated
 
 def smf_node_list(armature_object):
     """Construct the SMF node list from the given Armature object"""
@@ -287,7 +296,14 @@ def export_smf_file(operator, context,
         # The world transform is not applied to the mesh
         obj_eval = obj.evaluated_get(dg)
         mesh = bpy.data.meshes.new_from_object(obj_eval, preserve_all_data_layers=True, depsgraph=dg)
-        prep_mesh(obj, mesh)
+        tangents_calculated = prep_mesh(obj, mesh)
+        
+        if not tangents_calculated:
+            # Provide some info that this mesh's tangents may be off
+            message = "Tangents couldn't be calculated for " + obj.name + ". "
+            message += "Tangent space can only be computed for tris and quads. "
+            message += "Triangulate the mesh or add a Triangulate modifier to fix."
+            operator.report({'WARNING'}, message)
 
         # Reset pose_position setting
         if arma:
